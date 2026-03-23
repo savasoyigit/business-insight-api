@@ -1,136 +1,283 @@
 # Business Insight API
 
-A production-oriented backend application designed to support
-ERP-based reporting, data extraction, and business intelligence workflows.
+Spring Boot backend for external datasource routing, SQL-based insight execution, and BI asset management.
 
-The system allows data engineers to define external data sources and parameterized SQL query templates,
-while end users can later build visualizations on top of those datasets.
+It supports this flow:
 
----
+`DataSource -> QueryTemplate -> Dataset -> Snapshot -> Chart -> Dashboard`
 
-## 🚀 Tech Stack
+## Stack
 
 - Java 17
-- Spring Boot 3
-- Spring Security (JWT, stateless)
+- Spring Boot
+- Spring Security with JWT
 - PostgreSQL
-- Flyway (database migrations)
+- Flyway
 - Maven
-- Docker (local database)
 
----
+## Project Structure
 
-## 🔐 Authentication & Security
+- `api`: REST controllers and DTOs
+- `application`: business services and orchestration
+- `domain`: JPA entities and repositories
+- `infrastructure`: security, bootstrap, config
+- `common`: shared error handling
 
-- JWT-based stateless authentication
-- BCrypt password hashing
-- Custom authentication filter (Bearer token)
-- Global exception handling with standardized JSON error responses
-- SELECT-only enforcement for query templates (MVP guardrail)
+## Core Concepts
 
-All endpoints except `/api/auth/**` require authentication.
+### DataSource
 
----
+Represents an external database connection definition.
 
-## 🧱 Architecture Overview
-
-The project follows a layered architecture:
-
-- `api` → REST controllers & DTOs
-- `application` → Business services
-- `domain` → Core entities & repositories
-- `infrastructure` → Security & configuration
-- `common` → Shared components & error handling
-
-Insight module structure:
-
-- DataSource → Represents an external ERP connection definition
-- QueryTemplate → Parameterized, SELECT-only SQL query definitions
-- (Upcoming) QueryRun & DatasetSnapshot → Execution and persistence layer
-
----
-
-## 🏢 Insight Module (MVP Scope)
-
-### Data Sources
-
-Represents an external ERP connection configuration.
-
-Example connection JSON:
+Example:
 
 ```json
 {
-  "host": "10.0.0.10",
-  "port": 1433,
-  "database": "ERP",
+  "name": "Reporting Postgres",
+  "type": "POSTGRES",
+  "host": "localhost",
+  "port": 5432,
+  "databaseName": "erp_reporting",
   "username": "readonly_user",
-  "secretRef": "env:ERP_PASSWORD"
+  "secretRef": "env:ERP_REPORTING_PASSWORD",
+  "options": {
+    "ssl": false
+  }
 }
 ```
-### Query Templates
 
-Parameterized SQL definitions restricted to SELECT queries only.
+Security notes:
 
-Example parameters:
+- Passwords are not stored in plaintext in the app database.
+- `secretRef` currently supports `env:VAR_NAME`.
+- Example: `env:ERP_REPORTING_PASSWORD`.
+- Datasource routing is implemented for Postgres in the current phase.
 
-```
-[
-  { "name": "dateFrom", "type": "date", "required": true },
-  { "name": "dateTo", "type": "date", "required": true }
-]
-```
-Example output schema:
+### QueryTemplate
 
+Parameterized, guarded SQL definition bound to a datasource.
+
+Guardrails:
+
+- SELECT-only
+- single statement only
+- `;` rejected
+- DDL/DML keywords rejected
+- named parameters supported via `:paramName`
+- unexpected params rejected
+- default row cap: `5000`
+- snapshot row cap: `500`
+- JDBC timeout: `30s`
+
+Example:
+
+```json
+{
+  "dataSourceId": 1,
+  "name": "Current Date Validation",
+  "description": "Execution routing smoke test",
+  "sqlText": "select current_date as run_date where current_date >= :startDate",
+  "parameters": [
+    { "name": "startDate", "type": "date", "required": true }
+  ],
+  "outputSchema": [
+    { "name": "run_date", "type": "date" }
+  ]
+}
 ```
-[
-  { "name": "date", "type": "date" },
-  { "name": "amount", "type": "decimal" },
-  { "name": "currency", "type": "string" }
-]
+
+### Dataset
+
+Represents a reusable BI dataset built on top of a query template.
+
+Contains:
+
+- `queryTemplateId`
+- `defaultParams`
+- `createdBy`
+
+Example:
+
+```json
+{
+  "name": "Sales Daily",
+  "queryTemplateId": 1,
+  "defaultParams": {
+    "startDate": "2026-01-01"
+  }
+}
 ```
----
-## 🐳 Running Locally
+
+### Snapshot
+
+Materialized dataset result stored in `dataset_snapshot`.
+
+- linked to `query_run`
+- optionally linked to `dataset`
+- stored as JSON for MVP
+
+### Chart
+
+Chart metadata bound to a dataset.
+
+Supported chart types:
+
+- `BAR`
+- `LINE`
+- `PIE`
+
+Config example:
+
+```json
+{
+  "xField": "run_date",
+  "yField": "amount",
+  "seriesField": "region",
+  "aggregation": "sum"
+}
+```
+
+Render endpoint reads a snapshot and returns chart-ready points.
+
+### Dashboard
+
+Dashboard contains widgets referencing charts plus a JSON layout.
+
+Layout example:
+
+```json
+{
+  "x": 0,
+  "y": 0,
+  "w": 6,
+  "h": 4
+}
+```
+
+## Security
+
+All endpoints except `/api/auth/**` require authentication.
+
+Method security is enabled with `@EnableMethodSecurity`.
+
+Main permission groups:
+
+- datasource: `INSIGHT_DS_*`
+- query template: `INSIGHT_QT_*`
+- query execution: `INSIGHT_QUERY_EXECUTE`
+- dataset: `INSIGHT_DATASET_*`
+- chart: `INSIGHT_CHART_*`
+- dashboard: `INSIGHT_DASHBOARD_*`
+- admin RBAC: `RBAC_*`
+
+## Main Endpoints
+
+### Query Execution
+
+- `POST /api/insight/query-execution/validate`
+- `POST /api/insight/query-execution/execute`
+
+### Dataset
+
+- `GET /api/insight/datasets`
+- `GET /api/insight/datasets/{id}`
+- `POST /api/insight/datasets`
+- `PUT /api/insight/datasets/{id}`
+- `DELETE /api/insight/datasets/{id}`
+- `GET /api/insight/datasets/{id}/snapshots`
+- `POST /api/insight/datasets/{id}/snapshots`
+
+### Chart
+
+- `GET /api/insight/charts`
+- `GET /api/insight/charts/{id}`
+- `POST /api/insight/charts`
+- `PUT /api/insight/charts/{id}`
+- `DELETE /api/insight/charts/{id}`
+- `GET /api/insight/charts/{id}/render?snapshotId=...`
+
+### Dashboard
+
+- `GET /api/insight/dashboards`
+- `GET /api/insight/dashboards/{id}`
+- `POST /api/insight/dashboards`
+- `PUT /api/insight/dashboards/{id}`
+- `DELETE /api/insight/dashboards/{id}`
+
+## Running Locally
 
 ### 1. Start PostgreSQL
 
-```
+```bash
 docker compose up -d
 ```
-## 2. Set JWT Secret
+
+### 2. Set required environment variables
+
+Windows PowerShell:
+
+```powershell
+$env:JWT_SECRET="your_long_random_secret_here"
+$env:ERP_REPORTING_PASSWORD="your_readonly_password"
+```
 
 Linux/macOS:
-```
+
+```bash
 export JWT_SECRET=your_long_random_secret_here
+export ERP_REPORTING_PASSWORD=your_readonly_password
 ```
-Windows:
-```
-$env:JWT_SECRET="your_long_random_secret_here"
-```
+
 ### 3. Run the application
-```
+
+```bash
 ./mvnw spring-boot:run
 ```
-Application runs at:
-```
+
+Base URL:
+
+```text
 http://localhost:8080
 ```
----
 
-## RBAC Method Security (Roadmap Step)
+## Postman Collection
 
-- `@EnableMethodSecurity` is enabled.
-- JWT access token includes `perms` claim (permission codes).
-- `JwtAuthenticationFilter` maps `perms` claim to Spring authorities.
-- Insight endpoints are guarded with `@PreAuthorize`.
+Collection path:
 
-## Admin RBAC API (MVP)
+`postman/business-insight-api.postman_collection.json`
 
-Base path: `/api/admin/rbac`
+Current folders:
 
-- `GET /permissions` requires `RBAC_PERMISSION_MANAGE`
-- `GET /roles` requires `RBAC_ROLE_MANAGE`
-- `POST /roles` requires `RBAC_ROLE_MANAGE`
-- `PUT /roles/{id}` requires `RBAC_ROLE_MANAGE`
-- `PUT /roles/{id}/permissions` requires `RBAC_ROLE_MANAGE`
-- `GET /users?query=...` requires `RBAC_USER_ROLE_ASSIGN`
-- `PUT /users/{id}/roles` requires `RBAC_USER_ROLE_ASSIGN`
+- `Auth`
+- `Insight / Execution`
+- `Insight / BI Assets`
+- `RBAC Admin`
+
+Recommended execution order in Postman:
+
+1. Login
+2. Create Data Source
+3. Create Query Template
+4. Validate Query Execution
+5. Create Dataset
+6. Create Dataset Snapshot
+7. Create Chart
+8. Render Chart
+9. Create Dashboard
+
+## Example BI Flow
+
+1. Data engineer creates a datasource.
+2. Data engineer creates a query template.
+3. Product or analytics user creates a dataset on top of that template.
+4. Dataset snapshot is generated.
+5. Chart is created against the dataset.
+6. Dashboard is created with one or more chart widgets.
+
+## Build Check
+
+Compile locally with:
+
+```bash
+./mvnw -q -DskipTests compile
+```

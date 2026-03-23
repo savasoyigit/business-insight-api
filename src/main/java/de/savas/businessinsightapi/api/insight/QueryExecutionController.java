@@ -25,9 +25,25 @@ public class QueryExecutionController {
 
     public record ExecuteResponse(
             Long queryRunId,
+            String status,
             int rowCount,
             long durationMs,
+            String requestedBy,
+            Long dataSourceId,
+            Long queryTemplateId,
             Long snapshotId
+    ) {}
+
+    public record ValidateRequest(
+            @NotNull Long queryTemplateId,
+            Map<String, Object> params
+    ) {}
+
+    public record ValidateResponse(
+            boolean valid,
+            java.util.List<String> errors,
+            java.util.List<String> detectedParams,
+            java.util.List<String> allowedParams
     ) {}
 
     @PostMapping("/execute")
@@ -35,6 +51,22 @@ public class QueryExecutionController {
     public ExecuteResponse execute(@RequestParam Long orgId, @RequestBody ExecuteRequest req) {
         boolean takeSnapshot = req.snapshot() != null && req.snapshot();
         var result = service.execute(orgId, req.queryTemplateId(), req.params(), takeSnapshot);
-        return new ExecuteResponse(result.queryRunId(), result.rowCount(), result.durationMs(), result.snapshotId());
+        return new ExecuteResponse(
+                result.queryRunId(),
+                result.status().name(),
+                result.rowCount(),
+                result.durationMs(),
+                result.requestedBy(),
+                result.dataSourceId(),
+                result.queryTemplateId(),
+                result.snapshotId()
+        );
+    }
+
+    @PostMapping("/validate")
+    @PreAuthorize("hasAuthority('INSIGHT_QUERY_EXECUTE')")
+    public ValidateResponse validate(@RequestParam Long orgId, @RequestBody ValidateRequest req) {
+        var result = service.validate(orgId, req.queryTemplateId(), req.params());
+        return new ValidateResponse(result.valid(), result.errors(), result.detectedParams(), result.allowedParams());
     }
 }

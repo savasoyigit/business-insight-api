@@ -18,6 +18,9 @@ public class QueryRun {
     @Column(name="query_template_id", nullable = false)
     private Long queryTemplateId;
 
+    @Column(name="data_source_id", nullable = false)
+    private Long dataSourceId;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)
     private QueryRunStatus status;
@@ -42,16 +45,18 @@ public class QueryRun {
 
     protected QueryRun() {}
 
-    public QueryRun(Long organizationId, Long queryTemplateId, String requestedBy) {
+    public QueryRun(Long organizationId, Long queryTemplateId, Long dataSourceId, String requestedBy) {
         this.organizationId = organizationId;
         this.queryTemplateId = queryTemplateId;
+        this.dataSourceId = dataSourceId;
         this.requestedBy = requestedBy;
-        this.status = QueryRunStatus.FAILED; // default, set to SUCCESS when done
+        this.status = QueryRunStatus.RUNNING;
     }
 
     public Long getId() { return id; }
     public Long getOrganizationId() { return organizationId; }
     public Long getQueryTemplateId() { return queryTemplateId; }
+    public Long getDataSourceId() { return dataSourceId; }
     public QueryRunStatus getStatus() { return status; }
     public String getRequestedBy() { return requestedBy; }
     public OffsetDateTime getStartedAt() { return startedAt; }

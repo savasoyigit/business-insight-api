@@ -1,6 +1,5 @@
 package de.savas.businessinsightapi.domain.insight.datasource;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.persistence.*;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
@@ -27,19 +26,24 @@ public class DataSource {
     @Column(nullable = false, length = 50)
     private DataSourceType type;
 
-    /**
-     * Example JSON:
-     * {
-     *   "host": "10.0.0.10",
-     *   "port": 1433,
-     *   "database": "ERP",
-     *   "username": "readonly_user",
-     *   "secretRef": "env:ERP_MSSQL_PASSWORD"
-     * }
-     */
+    @Column(nullable = false, length = 255)
+    private String host;
+
+    @Column(nullable = false)
+    private Integer port;
+
+    @Column(name = "database_name", nullable = false, length = 255)
+    private String databaseName;
+
+    @Column(nullable = false, length = 255)
+    private String username;
+
+    @Column(name = "secret_ref", nullable = false, length = 255)
+    private String secretRef;
+
     @JdbcTypeCode(SqlTypes.JSON)
-    @Column(nullable = false, columnDefinition = "jsonb")
-    private JsonNode connection;
+    @Column(columnDefinition = "jsonb")
+    private com.fasterxml.jackson.databind.JsonNode options;
 
     @Column(name="is_active", nullable = false)
     private boolean active = true;
@@ -52,11 +56,24 @@ public class DataSource {
 
     protected DataSource() {}
 
-    public DataSource(Long organizationId, String name, DataSourceType type, JsonNode connection) {
+    public DataSource(Long organizationId,
+                      String name,
+                      DataSourceType type,
+                      String host,
+                      Integer port,
+                      String databaseName,
+                      String username,
+                      String secretRef,
+                      com.fasterxml.jackson.databind.JsonNode options) {
         this.organizationId = organizationId;
         this.name = name;
         this.type = type;
-        this.connection = connection;
+        this.host = host;
+        this.port = port;
+        this.databaseName = databaseName;
+        this.username = username;
+        this.secretRef = secretRef;
+        this.options = options;
     }
 
     @PreUpdate
@@ -68,11 +85,21 @@ public class DataSource {
     public Long getOrganizationId() { return organizationId; }
     public String getName() { return name; }
     public DataSourceType getType() { return type; }
-    public JsonNode getConnection() { return connection; }
+    public String getHost() { return host; }
+    public Integer getPort() { return port; }
+    public String getDatabaseName() { return databaseName; }
+    public String getUsername() { return username; }
+    public String getSecretRef() { return secretRef; }
+    public com.fasterxml.jackson.databind.JsonNode getOptions() { return options; }
     public boolean isActive() { return active; }
 
     public void setName(String name) { this.name = name; }
     public void setType(DataSourceType type) { this.type = type; }
-    public void setConnection(JsonNode connection) { this.connection = connection; }
+    public void setHost(String host) { this.host = host; }
+    public void setPort(Integer port) { this.port = port; }
+    public void setDatabaseName(String databaseName) { this.databaseName = databaseName; }
+    public void setUsername(String username) { this.username = username; }
+    public void setSecretRef(String secretRef) { this.secretRef = secretRef; }
+    public void setOptions(com.fasterxml.jackson.databind.JsonNode options) { this.options = options; }
     public void setActive(boolean active) { this.active = active; }
 }

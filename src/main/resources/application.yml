@@ -22,6 +22,11 @@ management:
         include: health,info
 
 app:
+  insight:
+    execution:
+      max-rows: 5000
+      snapshot-rows: 500
+      query-timeout-seconds: 30
   security:
     jwt:
       secret: ${JWT_SECRET}
