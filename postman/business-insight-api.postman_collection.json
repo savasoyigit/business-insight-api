@@ -298,6 +298,335 @@
               ]
             }
           ]
+        },
+        {
+          "name": "BI Assets",
+          "item": [
+            {
+              "name": "Create Dataset",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/insight/datasets?orgId={{orgId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "insight",
+                    "datasets"
+                  ],
+                  "query": [
+                    {
+                      "key": "orgId",
+                      "value": "{{orgId}}"
+                    }
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"{{datasetName}}\",\n  \"queryTemplateId\": {{queryTemplateId}},\n  \"defaultParams\": {\n    \"startDate\": \"{{startDate}}\"\n  }\n}"
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "const json = pm.response.json();",
+                      "pm.collectionVariables.set('datasetId', json.id);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "List Datasets",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/insight/datasets?orgId={{orgId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "insight",
+                    "datasets"
+                  ],
+                  "query": [
+                    {
+                      "key": "orgId",
+                      "value": "{{orgId}}"
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Create Dataset Snapshot",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/insight/datasets/{{datasetId}}/snapshots?orgId={{orgId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "insight",
+                    "datasets",
+                    "{{datasetId}}",
+                    "snapshots"
+                  ],
+                  "query": [
+                    {
+                      "key": "orgId",
+                      "value": "{{orgId}}"
+                    }
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"params\": {\n    \"startDate\": \"{{startDate}}\"\n  }\n}"
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "const json = pm.response.json();",
+                      "pm.collectionVariables.set('queryRunId', json.queryRunId);",
+                      "pm.collectionVariables.set('snapshotId', json.snapshotId);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "List Dataset Snapshots",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/insight/datasets/{{datasetId}}/snapshots?orgId={{orgId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "insight",
+                    "datasets",
+                    "{{datasetId}}",
+                    "snapshots"
+                  ],
+                  "query": [
+                    {
+                      "key": "orgId",
+                      "value": "{{orgId}}"
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Create Chart",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/insight/charts?orgId={{orgId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "insight",
+                    "charts"
+                  ],
+                  "query": [
+                    {
+                      "key": "orgId",
+                      "value": "{{orgId}}"
+                    }
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"{{chartName}}\",\n  \"type\": \"BAR\",\n  \"datasetId\": {{datasetId}},\n  \"config\": {\n    \"xField\": \"{{chartXField}}\",\n    \"yField\": \"{{chartYField}}\",\n    \"aggregation\": \"{{chartAggregation}}\"\n  }\n}"
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "const json = pm.response.json();",
+                      "pm.collectionVariables.set('chartId', json.id);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Render Chart",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/insight/charts/{{chartId}}/render?orgId={{orgId}}&snapshotId={{snapshotId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "insight",
+                    "charts",
+                    "{{chartId}}",
+                    "render"
+                  ],
+                  "query": [
+                    {
+                      "key": "orgId",
+                      "value": "{{orgId}}"
+                    },
+                    {
+                      "key": "snapshotId",
+                      "value": "{{snapshotId}}"
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Create Dashboard",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/insight/dashboards?orgId={{orgId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "insight",
+                    "dashboards"
+                  ],
+                  "query": [
+                    {
+                      "key": "orgId",
+                      "value": "{{orgId}}"
+                    }
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"{{dashboardName}}\",\n  \"widgets\": [\n    {\n      \"chartId\": {{chartId}},\n      \"layout\": {\n        \"x\": 0,\n        \"y\": 0,\n        \"w\": 6,\n        \"h\": 4\n      }\n    }\n  ]\n}"
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "const json = pm.response.json();",
+                      "pm.collectionVariables.set('dashboardId', json.id);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Get Dashboard",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/insight/dashboards/{{dashboardId}}?orgId={{orgId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "insight",
+                    "dashboards",
+                    "{{dashboardId}}"
+                  ],
+                  "query": [
+                    {
+                      "key": "orgId",
+                      "value": "{{orgId}}"
+                    }
+                  ]
+                }
+              }
+            }
+          ]
         }
       ]
     },
@@ -587,6 +916,42 @@
     },
     {
       "key": "queryTemplateId",
+      "value": "1"
+    },
+    {
+      "key": "datasetName",
+      "value": "Sales Daily"
+    },
+    {
+      "key": "datasetId",
+      "value": "1"
+    },
+    {
+      "key": "chartName",
+      "value": "Sales By Day"
+    },
+    {
+      "key": "chartId",
+      "value": "1"
+    },
+    {
+      "key": "chartXField",
+      "value": "run_date"
+    },
+    {
+      "key": "chartYField",
+      "value": "amount"
+    },
+    {
+      "key": "chartAggregation",
+      "value": "sum"
+    },
+    {
+      "key": "dashboardName",
+      "value": "Executive Dashboard"
+    },
+    {
+      "key": "dashboardId",
       "value": "1"
     },
     {
