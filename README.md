@@ -1,136 +1,123 @@
 # Business Insight API
 
-A production-oriented backend application designed to support
-ERP-based reporting, data extraction, and business intelligence workflows.
+Backend service for reporting, external datasource routing, and insight query execution.
 
-The system allows data engineers to define external data sources and parameterized SQL query templates,
-while end users can later build visualizations on top of those datasets.
-
----
-
-## 🚀 Tech Stack
+## Tech Stack
 
 - Java 17
-- Spring Boot 3
-- Spring Security (JWT, stateless)
+- Spring Boot
+- Spring Security with JWT
 - PostgreSQL
-- Flyway (database migrations)
+- Flyway
 - Maven
-- Docker (local database)
 
----
+## Architecture
 
-## 🔐 Authentication & Security
+- `api`: REST controllers and request/response DTOs
+- `application`: business services and execution orchestration
+- `domain`: JPA entities and repositories
+- `infrastructure`: security and configuration
+- `common`: shared error handling
 
-- JWT-based stateless authentication
-- BCrypt password hashing
-- Custom authentication filter (Bearer token)
-- Global exception handling with standardized JSON error responses
-- SELECT-only enforcement for query templates (MVP guardrail)
+## Insight Execution
 
-All endpoints except `/api/auth/**` require authentication.
+`QueryTemplate` execution is routed to the external datasource attached to the template.
 
----
-
-## 🧱 Architecture Overview
-
-The project follows a layered architecture:
-
-- `api` → REST controllers & DTOs
-- `application` → Business services
-- `domain` → Core entities & repositories
-- `infrastructure` → Security & configuration
-- `common` → Shared components & error handling
-
-Insight module structure:
-
-- DataSource → Represents an external ERP connection definition
-- QueryTemplate → Parameterized, SELECT-only SQL query definitions
-- (Upcoming) QueryRun & DatasetSnapshot → Execution and persistence layer
-
----
-
-## 🏢 Insight Module (MVP Scope)
-
-### Data Sources
-
-Represents an external ERP connection configuration.
-
-Example connection JSON:
+Datasource model:
 
 ```json
 {
-  "host": "10.0.0.10",
-  "port": 1433,
-  "database": "ERP",
+  "name": "Reporting Postgres",
+  "type": "POSTGRES",
+  "host": "localhost",
+  "port": 5432,
+  "databaseName": "erp_reporting",
   "username": "readonly_user",
-  "secretRef": "env:ERP_PASSWORD"
+  "secretRef": "env:ERP_REPORTING_PASSWORD",
+  "options": {
+    "ssl": false
+  }
 }
 ```
-### Query Templates
 
-Parameterized SQL definitions restricted to SELECT queries only.
+Security note:
 
-Example parameters:
+- Passwords are not stored in the app database.
+- `secretRef` must currently use the `env:VAR_NAME` format.
+- Example: `env:ERP_REPORTING_PASSWORD` resolves from the process environment.
+- Plaintext secrets in the datasource record are intentionally not supported in this phase.
 
-```
-[
-  { "name": "dateFrom", "type": "date", "required": true },
-  { "name": "dateTo", "type": "date", "required": true }
-]
-```
-Example output schema:
+Query execution guardrails:
 
-```
-[
-  { "name": "date", "type": "date" },
-  { "name": "amount", "type": "decimal" },
-  { "name": "currency", "type": "string" }
-]
-```
----
-## 🐳 Running Locally
+- SELECT-only
+- single statement only
+- rejects DDL/DML keywords and `;`
+- named parameters supported via `:paramName`
+- unexpected params rejected
+- default row cap: `5000`
+- snapshot row cap: `500`
+- JDBC timeout: `30s`
+
+Validation endpoint:
+
+- `POST /api/insight/query-execution/validate`
+- Returns `valid`, `errors`, `detectedParams`, `allowedParams`
+
+Execution endpoint:
+
+- `POST /api/insight/query-execution/execute`
+- Persists `query_run`
+- Persists `dataset_snapshot` when `snapshot=true`
+
+## Local Run
 
 ### 1. Start PostgreSQL
 
-```
+```bash
 docker compose up -d
 ```
-## 2. Set JWT Secret
+
+### 2. Set required secrets
+
+Windows PowerShell:
+
+```powershell
+$env:JWT_SECRET="your_long_random_secret_here"
+$env:ERP_REPORTING_PASSWORD="your_readonly_password"
+```
 
 Linux/macOS:
-```
+
+```bash
 export JWT_SECRET=your_long_random_secret_here
+export ERP_REPORTING_PASSWORD=your_readonly_password
 ```
-Windows:
-```
-$env:JWT_SECRET="your_long_random_secret_here"
-```
-### 3. Run the application
-```
+
+### 3. Run the app
+
+```bash
 ./mvnw spring-boot:run
 ```
-Application runs at:
-```
+
+App base URL:
+
+```text
 http://localhost:8080
 ```
----
 
-## RBAC Method Security (Roadmap Step)
+## Postman
 
-- `@EnableMethodSecurity` is enabled.
-- JWT access token includes `perms` claim (permission codes).
-- `JwtAuthenticationFilter` maps `perms` claim to Spring authorities.
-- Insight endpoints are guarded with `@PreAuthorize`.
+The Postman collection contains an `Insight / Execution` folder for:
 
-## Admin RBAC API (MVP)
+- creating a datasource
+- creating a query template
+- validating execution
+- executing with snapshot
 
-Base path: `/api/admin/rbac`
+## RBAC
 
-- `GET /permissions` requires `RBAC_PERMISSION_MANAGE`
-- `GET /roles` requires `RBAC_ROLE_MANAGE`
-- `POST /roles` requires `RBAC_ROLE_MANAGE`
-- `PUT /roles/{id}` requires `RBAC_ROLE_MANAGE`
-- `PUT /roles/{id}/permissions` requires `RBAC_ROLE_MANAGE`
-- `GET /users?query=...` requires `RBAC_USER_ROLE_ASSIGN`
-- `PUT /users/{id}/roles` requires `RBAC_USER_ROLE_ASSIGN`
+All endpoints except `/api/auth/**` require authentication.
+
+Insight execution endpoint requires:
+
+- `INSIGHT_QUERY_EXECUTE`

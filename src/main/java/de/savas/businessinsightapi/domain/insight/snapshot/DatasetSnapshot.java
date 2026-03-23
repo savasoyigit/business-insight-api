@@ -21,6 +21,9 @@ public class DatasetSnapshot {
     @Column(name="query_run_id", nullable = false)
     private Long queryRunId;
 
+    @Column(name = "dataset_id")
+    private Long datasetId;
+
     @Column(name="storage_format", nullable = false, length = 30)
     private String storageFormat = "JSON";
 
@@ -39,9 +42,17 @@ public class DatasetSnapshot {
         this.data = data;
     }
 
+    public DatasetSnapshot(Long organizationId, Long queryRunId, Long datasetId, JsonNode data) {
+        this.organizationId = organizationId;
+        this.queryRunId = queryRunId;
+        this.datasetId = datasetId;
+        this.data = data;
+    }
+
     public Long getId() { return id; }
     public Long getOrganizationId() { return organizationId; }
     public Long getQueryRunId() { return queryRunId; }
+    public Long getDatasetId() { return datasetId; }
     public String getStorageFormat() { return storageFormat; }
     public JsonNode getData() { return data; }
     public OffsetDateTime getCreatedAt() { return createdAt; }

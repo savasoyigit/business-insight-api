@@ -46,6 +46,21 @@ public class RbacSeeder implements ApplicationRunner {
 
                 perm("INSIGHT_QUERY_EXECUTE", "Execute query templates"),
 
+                perm("INSIGHT_DATASET_READ", "Read datasets"),
+                perm("INSIGHT_DATASET_CREATE", "Create datasets"),
+                perm("INSIGHT_DATASET_UPDATE", "Update datasets"),
+                perm("INSIGHT_DATASET_DELETE", "Delete datasets"),
+
+                perm("INSIGHT_CHART_READ", "Read charts"),
+                perm("INSIGHT_CHART_CREATE", "Create charts"),
+                perm("INSIGHT_CHART_UPDATE", "Update charts"),
+                perm("INSIGHT_CHART_DELETE", "Delete charts"),
+
+                perm("INSIGHT_DASHBOARD_READ", "Read dashboards"),
+                perm("INSIGHT_DASHBOARD_CREATE", "Create dashboards"),
+                perm("INSIGHT_DASHBOARD_UPDATE", "Update dashboards"),
+                perm("INSIGHT_DASHBOARD_DELETE", "Delete dashboards"),
+
                 perm("RBAC_ROLE_MANAGE", "Manage roles"),
                 perm("RBAC_PERMISSION_MANAGE", "Manage permissions"),
                 perm("RBAC_USER_ROLE_ASSIGN", "Assign roles to users")

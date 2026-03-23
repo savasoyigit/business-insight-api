@@ -14,10 +14,14 @@ public class QueryTemplateService {
 
     private final QueryTemplateRepository repo;
     private final DataSourceRepository dataSourceRepo;
+    private final InsightSqlValidator sqlValidator;
 
-    public QueryTemplateService(QueryTemplateRepository repo, DataSourceRepository dataSourceRepo) {
+    public QueryTemplateService(QueryTemplateRepository repo,
+                                DataSourceRepository dataSourceRepo,
+                                InsightSqlValidator sqlValidator) {
         this.repo = repo;
         this.dataSourceRepo = dataSourceRepo;
+        this.sqlValidator = sqlValidator;
     }
 
     public Page<QueryTemplate> list(Long organizationId, Pageable pageable) {
@@ -49,11 +53,7 @@ public class QueryTemplateService {
         if (sqlText == null || sqlText.isBlank()) {
             throw new BadRequestException("sqlText is required");
         }
-        // basic safety for MVP: allow only SELECT (real parser later)
-        String normalized = sqlText.trim().toLowerCase();
-        if (!normalized.startsWith("select")) {
-            throw new BadRequestException("Only SELECT queries are allowed");
-        }
+        sqlValidator.assertValid(sqlText);
 
         if (parameters == null) parameters = com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.arrayNode();
         if (outputSchema == null) outputSchema = com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.arrayNode();
@@ -84,10 +84,7 @@ public class QueryTemplateService {
         if (description != null) qt.setDescription(description);
 
         if (sqlText != null) {
-            String normalized = sqlText.trim().toLowerCase();
-            if (!normalized.startsWith("select")) {
-                throw new BadRequestException("Only SELECT queries are allowed");
-            }
+            sqlValidator.assertValid(sqlText);
             qt.setSqlText(sqlText);
         }
 

@@ -1,6 +1,5 @@
 package de.savas.businessinsightapi.api.insight;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import de.savas.businessinsightapi.domain.insight.datasource.DataSource;
 import de.savas.businessinsightapi.domain.insight.datasource.DataSourceType;
 import jakarta.validation.constraints.NotBlank;
@@ -11,13 +10,23 @@ public class DataSourceDtos {
     public record CreateDataSourceRequest(
             @NotBlank String name,
             @NotNull DataSourceType type,
-            @NotNull JsonNode connection
+            @NotBlank String host,
+            @NotNull Integer port,
+            @NotBlank String databaseName,
+            @NotBlank String username,
+            @NotBlank String secretRef,
+            com.fasterxml.jackson.databind.JsonNode options
     ) {}
 
     public record UpdateDataSourceRequest(
             String name,
             DataSourceType type,
-            JsonNode connection,
+            String host,
+            Integer port,
+            String databaseName,
+            String username,
+            String secretRef,
+            com.fasterxml.jackson.databind.JsonNode options,
             Boolean active
     ) {}
 
@@ -25,11 +34,27 @@ public class DataSourceDtos {
             Long id,
             String name,
             DataSourceType type,
-            JsonNode connection,
+            String host,
+            Integer port,
+            String databaseName,
+            String username,
+            String secretRef,
+            com.fasterxml.jackson.databind.JsonNode options,
             boolean active
     ) {
         public static DataSourceResponse from(DataSource ds) {
-            return new DataSourceResponse(ds.getId(), ds.getName(), ds.getType(), ds.getConnection(), ds.isActive());
+            return new DataSourceResponse(
+                    ds.getId(),
+                    ds.getName(),
+                    ds.getType(),
+                    ds.getHost(),
+                    ds.getPort(),
+                    ds.getDatabaseName(),
+                    ds.getUsername(),
+                    ds.getSecretRef(),
+                    ds.getOptions(),
+                    ds.isActive()
+            );
         }
     }
 }

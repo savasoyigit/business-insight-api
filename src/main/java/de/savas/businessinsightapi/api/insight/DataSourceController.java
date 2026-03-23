@@ -34,12 +34,34 @@ public class DataSourceController {
     @PostMapping
     @PreAuthorize("hasAuthority('INSIGHT_DS_CREATE')")
     public DataSourceResponse create(@RequestParam Long orgId, @Valid @RequestBody CreateDataSourceRequest req) {
-        return DataSourceResponse.from(service.create(orgId, req.name(), req.type(), req.connection()));
+        return DataSourceResponse.from(service.create(
+                orgId,
+                req.name(),
+                req.type(),
+                req.host(),
+                req.port(),
+                req.databaseName(),
+                req.username(),
+                req.secretRef(),
+                req.options()
+        ));
     }
 
     @PutMapping("/{id}")
     @PreAuthorize("hasAuthority('INSIGHT_DS_UPDATE')")
     public DataSourceResponse update(@RequestParam Long orgId, @PathVariable Long id, @Valid @RequestBody UpdateDataSourceRequest req) {
-        return DataSourceResponse.from(service.update(orgId, id, req.name(), req.type(), req.connection(), req.active()));
+        return DataSourceResponse.from(service.update(
+                orgId,
+                id,
+                req.name(),
+                req.type(),
+                req.host(),
+                req.port(),
+                req.databaseName(),
+                req.username(),
+                req.secretRef(),
+                req.options(),
+                req.active()
+        ));
     }
 }
