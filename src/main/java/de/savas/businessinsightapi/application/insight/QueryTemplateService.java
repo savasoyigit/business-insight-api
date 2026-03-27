@@ -53,7 +53,7 @@ public class QueryTemplateService {
         if (sqlText == null || sqlText.isBlank()) {
             throw new BadRequestException("sqlText is required");
         }
-        sqlValidator.assertValid(sqlText);
+        sqlValidator.assertValid(sqlText, ds.getType());
 
         if (parameters == null) parameters = com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.arrayNode();
         if (outputSchema == null) outputSchema = com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.arrayNode();
@@ -84,7 +84,10 @@ public class QueryTemplateService {
         if (description != null) qt.setDescription(description);
 
         if (sqlText != null) {
-            sqlValidator.assertValid(sqlText);
+            // Need to fetch the datasource to validate with the correct dialect
+            var ds = dataSourceRepo.findById(qt.getDataSourceId())
+                    .orElseThrow(() -> new BadRequestException("DataSource not found"));
+            sqlValidator.assertValid(sqlText, ds.getType());
             qt.setSqlText(sqlText);
         }
 
