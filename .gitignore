@@ -53,3 +53,10 @@ application-local.yml
 
 # Docker
 db_data/
+
+# Documentation (except README.md)
+*.md
+!README.md
+.github/copilot-instructions.md
+copilot-instructions-DRAFT.md
+
