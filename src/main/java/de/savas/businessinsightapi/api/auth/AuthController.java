@@ -1,6 +1,7 @@
 package de.savas.businessinsightapi.api.auth;
 
 import de.savas.businessinsightapi.application.auth.AuthService;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
 
@@ -20,8 +21,16 @@ public class AuthController {
     }
 
     @PostMapping("/login")
-    public LoginResponse login(@Valid @RequestBody LoginRequest request) {
-        String token = authService.login(request.username(), request.password());
+    public LoginResponse login(@Valid @RequestBody LoginRequest request, HttpServletRequest servletRequest) {
+        String token = authService.login(request.username(), request.password(), clientIp(servletRequest));
         return new LoginResponse(token);
+    }
+
+    private String clientIp(HttpServletRequest request) {
+        String forwarded = request.getHeader("X-Forwarded-For");
+        if (forwarded != null && !forwarded.isBlank()) {
+            return forwarded.split(",")[0].trim();
+        }
+        return request.getRemoteAddr();
     }
 }

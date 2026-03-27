@@ -62,6 +62,15 @@ public class GlobalExceptionHandler {
         return buildError(HttpStatus.UNAUTHORIZED, ex.getMessage(), request.getRequestURI());
     }
 
+        // 429 - Rate limiting
+        @ExceptionHandler(TooManyRequestsException.class)
+        public ResponseEntity<ApiError> handleTooManyRequests(
+                        TooManyRequestsException ex,
+                        HttpServletRequest request
+        ) {
+                return buildError(HttpStatus.TOO_MANY_REQUESTS, ex.getMessage(), request.getRequestURI());
+        }
+
     // 500 - Fallback (don’t leak details)
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiError> handleGeneric(

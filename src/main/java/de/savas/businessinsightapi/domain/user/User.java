@@ -2,6 +2,8 @@ package de.savas.businessinsightapi.domain.user;
 
 import de.savas.businessinsightapi.domain.security.Role;
 import jakarta.persistence.*;
+import java.time.Duration;
+import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.HashSet;
 import java.util.Set;
@@ -25,6 +27,12 @@ public class User {
 
     @Column(nullable = false)
     private OffsetDateTime createdAt = OffsetDateTime.now();
+
+    @Column(name = "failed_login_attempts", nullable = false)
+    private int failedLoginAttempts = 0;
+
+    @Column(name = "locked_until")
+    private OffsetDateTime lockedUntil;
 
     @ManyToMany(fetch = FetchType.EAGER)
     @JoinTable(
@@ -51,6 +59,8 @@ public class User {
     public Long getId() { return id; }
     public String getEmail() { return email; }
     public String getPasswordHash() { return passwordHash; }
+    public int getFailedLoginAttempts() { return failedLoginAttempts; }
+    public OffsetDateTime getLockedUntil() { return lockedUntil; }
 
     public void changeEmail(String email) {
         this.email = email;
@@ -63,5 +73,22 @@ public class User {
     public void replaceRoles(Set<Role> roles) {
         this.roles.clear();
         this.roles.addAll(roles);
+    }
+
+    public boolean isLocked() {
+        return lockedUntil != null && lockedUntil.isAfter(OffsetDateTime.now());
+    }
+
+    public void registerFailedLogin(int maxAttempts, Duration lockoutDuration) {
+        this.failedLoginAttempts += 1;
+        if (this.failedLoginAttempts >= maxAttempts) {
+            this.lockedUntil = OffsetDateTime.ofInstant(Instant.now().plus(lockoutDuration), OffsetDateTime.now().getOffset());
+            this.failedLoginAttempts = 0;
+        }
+    }
+
+    public void clearFailedLoginState() {
+        this.failedLoginAttempts = 0;
+        this.lockedUntil = null;
     }
 }
