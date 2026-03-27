@@ -13,9 +13,11 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 @EnableMethodSecurity
 public class SecurityConfig {
 
+    private final CorrelationIdFilter correlationIdFilter;
     private final JwtAuthenticationFilter jwtFilter;
 
-    public SecurityConfig(JwtAuthenticationFilter jwtFilter) {
+    public SecurityConfig(CorrelationIdFilter correlationIdFilter, JwtAuthenticationFilter jwtFilter) {
+        this.correlationIdFilter = correlationIdFilter;
         this.jwtFilter = jwtFilter;
     }
 
@@ -29,6 +31,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/health", "/actuator/health", "/api/auth/**").permitAll()
                         .anyRequest().authenticated()
                 )
+                .addFilterBefore(correlationIdFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();

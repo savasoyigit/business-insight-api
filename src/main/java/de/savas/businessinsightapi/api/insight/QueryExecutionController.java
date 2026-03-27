@@ -1,7 +1,10 @@
 package de.savas.businessinsightapi.api.insight;
 
 import de.savas.businessinsightapi.application.insight.QueryExecutionService;
+import de.savas.businessinsightapi.domain.insight.run.QueryRun;
 import jakarta.validation.constraints.NotNull;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
@@ -31,8 +34,40 @@ public class QueryExecutionController {
             String requestedBy,
             Long dataSourceId,
             Long queryTemplateId,
-            Long snapshotId
+            Long snapshotId,
+            String queryHash,
+            String errorType
     ) {}
+
+    public record QueryRunResponse(
+            Long id,
+            String status,
+            String requestedBy,
+            Long queryTemplateId,
+            Long dataSourceId,
+            long durationMs,
+            Integer rowCount,
+            String queryHash,
+            String errorType,
+            java.time.OffsetDateTime startedAt,
+            java.time.OffsetDateTime finishedAt
+    ) {
+        public static QueryRunResponse from(QueryRun run) {
+            return new QueryRunResponse(
+                    run.getId(),
+                    run.getStatus().name(),
+                    run.getRequestedBy(),
+                    run.getQueryTemplateId(),
+                    run.getDataSourceId(),
+                    run.getDurationMs() == null ? 0L : run.getDurationMs(),
+                    run.getRowCount(),
+                    run.getQueryHash(),
+                    run.getErrorType(),
+                    run.getStartedAt(),
+                    run.getFinishedAt()
+            );
+        }
+    }
 
     public record ValidateRequest(
             @NotNull Long queryTemplateId,
@@ -59,9 +94,17 @@ public class QueryExecutionController {
                 result.requestedBy(),
                 result.dataSourceId(),
                 result.queryTemplateId(),
-                result.snapshotId()
+                                result.snapshotId(),
+                                result.queryHash(),
+                                result.errorType()
         );
     }
+
+        @GetMapping("/runs")
+        @PreAuthorize("hasAuthority('INSIGHT_QUERY_EXECUTE')")
+        public Page<QueryRunResponse> listRuns(@RequestParam Long orgId, Pageable pageable) {
+                return service.listRuns(orgId, pageable).map(QueryRunResponse::from);
+        }
 
     @PostMapping("/validate")
     @PreAuthorize("hasAuthority('INSIGHT_QUERY_EXECUTE')")
