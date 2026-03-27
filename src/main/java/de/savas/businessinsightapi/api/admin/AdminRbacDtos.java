@@ -1,11 +1,13 @@
 package de.savas.businessinsightapi.api.admin;
 
 import de.savas.businessinsightapi.domain.security.Permission;
+import de.savas.businessinsightapi.domain.security.RbacAuditLog;
 import de.savas.businessinsightapi.domain.security.Role;
 import de.savas.businessinsightapi.domain.user.User;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 
 public class AdminRbacDtos {
@@ -51,6 +53,30 @@ public class AdminRbacDtos {
             return new UserRoleResponse(user.getId(), user.getUsername(), user.getEmail(), roleNames);
         }
     }
+
+        public record AuditLogResponse(
+                        Long id,
+                        String actorUsername,
+                        String action,
+                        String targetType,
+                        String targetId,
+                        String correlationId,
+                        com.fasterxml.jackson.databind.JsonNode details,
+                        OffsetDateTime createdAt
+        ) {
+                public static AuditLogResponse from(RbacAuditLog entry) {
+                        return new AuditLogResponse(
+                                        entry.getId(),
+                                        entry.getActorUsername(),
+                                        entry.getAction(),
+                                        entry.getTargetType(),
+                                        entry.getTargetId(),
+                                        entry.getCorrelationId(),
+                                        entry.getDetails(),
+                                        entry.getCreatedAt()
+                        );
+                }
+        }
 
     public record CreateRoleRequest(
             @NotBlank String name,

@@ -3,16 +3,20 @@ package de.savas.businessinsightapi.application.rbac;
 import de.savas.businessinsightapi.common.error.BadRequestException;
 import de.savas.businessinsightapi.domain.security.Permission;
 import de.savas.businessinsightapi.domain.security.PermissionRepository;
+import de.savas.businessinsightapi.domain.security.RbacAuditLog;
 import de.savas.businessinsightapi.domain.security.Role;
 import de.savas.businessinsightapi.domain.security.RoleRepository;
 import de.savas.businessinsightapi.domain.user.User;
 import de.savas.businessinsightapi.domain.user.UserRepository;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 @Service
@@ -21,13 +25,16 @@ public class RbacAdminService {
     private final PermissionRepository permissionRepository;
     private final RoleRepository roleRepository;
     private final UserRepository userRepository;
+    private final RbacAuditService rbacAuditService;
 
     public RbacAdminService(PermissionRepository permissionRepository,
                             RoleRepository roleRepository,
-                            UserRepository userRepository) {
+                            UserRepository userRepository,
+                            RbacAuditService rbacAuditService) {
         this.permissionRepository = permissionRepository;
         this.roleRepository = roleRepository;
         this.userRepository = userRepository;
+        this.rbacAuditService = rbacAuditService;
     }
 
     @Transactional(readOnly = true)
@@ -49,7 +56,9 @@ public class RbacAdminService {
         if (roleRepository.findByName(name).isPresent()) {
             throw new BadRequestException("Role already exists: " + name);
         }
-        return roleRepository.save(new Role(name, description));
+        Role role = roleRepository.save(new Role(name, description));
+        rbacAuditService.log("ROLE_CREATED", "ROLE", String.valueOf(role.getId()), Map.of("name", role.getName()));
+        return role;
     }
 
     @Transactional
@@ -57,7 +66,9 @@ public class RbacAdminService {
         Role role = roleRepository.findById(roleId)
                 .orElseThrow(() -> new BadRequestException("Role not found"));
         role.setDescription(description);
-        return roleRepository.save(role);
+        Role saved = roleRepository.save(role);
+        rbacAuditService.log("ROLE_DESCRIPTION_UPDATED", "ROLE", String.valueOf(saved.getId()), Map.of("description", saved.getDescription()));
+        return saved;
     }
 
     @Transactional
@@ -72,7 +83,14 @@ public class RbacAdminService {
         }
 
         role.replacePermissions(new HashSet<>(permissions));
-        return roleRepository.save(role);
+        Role saved = roleRepository.save(role);
+        rbacAuditService.log(
+            "ROLE_PERMISSIONS_REPLACED",
+            "ROLE",
+            String.valueOf(saved.getId()),
+            Map.of("permissionCodes", normalizedCodes)
+        );
+        return saved;
     }
 
     @Transactional(readOnly = true)
@@ -89,6 +107,11 @@ public class RbacAdminService {
                 .toList();
     }
 
+    @Transactional(readOnly = true)
+    public Page<RbacAuditLog> listAuditLogs(Pageable pageable) {
+        return rbacAuditService.list(pageable);
+    }
+
     @Transactional
     public User replaceUserRoles(Long userId, List<String> roleNames) {
         User user = userRepository.findById(userId)
@@ -102,6 +125,13 @@ public class RbacAdminService {
 
         Set<Role> roleSet = new HashSet<>(roles);
         user.replaceRoles(roleSet);
-        return userRepository.save(user);
+        User saved = userRepository.save(user);
+        rbacAuditService.log(
+            "USER_ROLES_REPLACED",
+            "USER",
+            String.valueOf(saved.getId()),
+            Map.of("roleNames", normalizedNames)
+        );
+        return saved;
     }
 }

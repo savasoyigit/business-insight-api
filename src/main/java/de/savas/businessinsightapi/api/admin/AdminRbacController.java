@@ -3,6 +3,8 @@ package de.savas.businessinsightapi.api.admin;
 import de.savas.businessinsightapi.application.rbac.RbacAdminService;
 import de.savas.businessinsightapi.api.admin.AdminRbacDtos.*;
 import jakarta.validation.Valid;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
@@ -58,6 +60,12 @@ public class AdminRbacController {
         return service.listUsers(query).stream()
                 .map(UserRoleResponse::from)
                 .toList();
+    }
+
+    @GetMapping("/audit-logs")
+    @PreAuthorize("hasAuthority('RBAC_ROLE_MANAGE')")
+    public Page<AuditLogResponse> listAuditLogs(Pageable pageable) {
+        return service.listAuditLogs(pageable).map(AuditLogResponse::from);
     }
 
     @PutMapping("/users/{id}/roles")
