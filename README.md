@@ -51,7 +51,28 @@ Security notes:
 - Passwords are not stored in plaintext in the app database.
 - `secretRef` currently supports `env:VAR_NAME`.
 - Example: `env:ERP_REPORTING_PASSWORD`.
-- Datasource routing is implemented for Postgres in the current phase.
+- **Multi-database support**: Postgres and MSSQL connectors with pluggable SQL dialect architecture.
+
+**Supported Database Types:**
+- `POSTGRES` - PostgreSQL databases
+- `MSSQL` - Microsoft SQL Server databases
+
+**Testing Connections:**
+
+Use the connection test endpoint to verify datasource connectivity:
+
+```http
+POST /api/insight/data-sources/{id}/test?orgId={orgId}
+```
+
+Response:
+```json
+{
+  "ok": true,
+  "latencyMs": 45,
+  "error": null
+}
+```
 
 ### QueryTemplate
 
@@ -59,13 +80,13 @@ Parameterized, guarded SQL definition bound to a datasource.
 
 Guardrails:
 
-- SELECT-only
+- SELECT-only (dialect-aware validation)
 - single statement only
 - `;` rejected
 - DDL/DML keywords rejected
 - named parameters supported via `:paramName`
 - unexpected params rejected
-- default row cap: `5000`
+- default row cap: `5000` (applied via `LIMIT` or `TOP` depending on database type)
 - snapshot row cap: `500`
 - JDBC timeout: `30s`
 
@@ -171,6 +192,14 @@ Main permission groups:
 - admin RBAC: `RBAC_*`
 
 ## Main Endpoints
+
+### DataSource
+
+- `GET /api/insight/data-sources`
+- `GET /api/insight/data-sources/{id}`
+- `POST /api/insight/data-sources`
+- `PUT /api/insight/data-sources/{id}`
+- `POST /api/insight/data-sources/{id}/test` - Test database connectivity
 
 ### Query Execution
 

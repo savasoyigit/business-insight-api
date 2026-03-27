@@ -13,35 +13,32 @@ import java.util.regex.Pattern;
 public class InsightSqlValidator {
 
     private static final Pattern PARAM_PATTERN = Pattern.compile("(?<!:):([a-zA-Z][a-zA-Z0-9_]*)");
-    private static final Pattern FORBIDDEN_PATTERN = Pattern.compile(
-            "\\b(insert|update|delete|drop|alter|truncate|create|merge|grant|revoke|comment|execute|call)\\b",
-            Pattern.CASE_INSENSITIVE
-    );
-    private static final Pattern LIMIT_PATTERN = Pattern.compile("\\blimit\\s+\\d+\\b", Pattern.CASE_INSENSITIVE);
+    
+    private final SqlDialectFactory dialectFactory;
 
-    public ValidationResult validateSql(String sqlText) {
+    public InsightSqlValidator(SqlDialectFactory dialectFactory) {
+        this.dialectFactory = dialectFactory;
+    }
+
+    public ValidationResult validateSql(String sqlText, DataSourceType dataSourceType) {
         Set<String> errors = new LinkedHashSet<>();
-        String normalized = normalize(sqlText);
-
-        if (normalized.isBlank()) {
+        
+        if (sqlText == null || sqlText.isBlank()) {
             errors.add("sqlText is required");
         } else {
-            if (!normalized.startsWith("select ")) {
-                errors.add("Only SELECT queries are allowed");
-            }
-            if (normalized.contains(";")) {
-                errors.add("Only a single SELECT statement is allowed");
-            }
-            if (FORBIDDEN_PATTERN.matcher(normalized).find()) {
-                errors.add("DDL/DML keywords are not allowed");
+            SqlDialect dialect = dialectFactory.getDialect(dataSourceType);
+            SqlDialect.ValidationResult dialectValidation = dialect.validateSelectOnly(sqlText);
+            
+            if (!dialectValidation.valid()) {
+                errors.add(dialectValidation.errorMessage());
             }
         }
 
         return new ValidationResult(errors.isEmpty(), errors, extractNamedParams(sqlText));
     }
 
-    public void assertValid(String sqlText) {
-        ValidationResult result = validateSql(sqlText);
+    public void assertValid(String sqlText, DataSourceType dataSourceType) {
+        ValidationResult result = validateSql(sqlText, dataSourceType);
         if (!result.valid()) {
             throw new BadRequestException(String.join("; ", result.errors()));
         }
@@ -59,14 +56,12 @@ public class InsightSqlValidator {
         return params;
     }
 
-    public String applyLimitIfMissing(String sqlText, int maxRows) {
+    public String applyLimitIfMissing(String sqlText, int maxRows, DataSourceType dataSourceType) {
         if (sqlText == null) {
             return null;
         }
-        if (LIMIT_PATTERN.matcher(sqlText).find()) {
-            return sqlText;
-        }
-        return sqlText.stripTrailing() + " limit " + maxRows;
+        SqlDialect dialect = dialectFactory.getDialect(dataSourceType);
+        return dialect.applyLimit(sqlText, maxRows);
     }
 
     private String normalize(String sqlText) {

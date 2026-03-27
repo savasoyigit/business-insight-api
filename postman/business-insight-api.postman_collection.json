@@ -160,6 +160,86 @@
               ]
             },
             {
+              "name": "Test Data Source Connection",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/insight/data-sources/{{dataSourceId}}/test?orgId={{orgId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "insight",
+                    "data-sources",
+                    "{{dataSourceId}}",
+                    "test"
+                  ],
+                  "query": [
+                    {
+                      "key": "orgId",
+                      "value": "{{orgId}}"
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Create MSSQL Data Source",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/insight/data-sources?orgId={{orgId}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "insight",
+                    "data-sources"
+                  ],
+                  "query": [
+                    {
+                      "key": "orgId",
+                      "value": "{{orgId}}"
+                    }
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"ERP SQL Server\",\n  \"type\": \"MSSQL\",\n  \"host\": \"localhost\",\n  \"port\": 1433,\n  \"databaseName\": \"erp_prod\",\n  \"username\": \"readonly_user\",\n  \"secretRef\": \"env:MSSQL_PASSWORD\",\n  \"options\": {}\n}"
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "const json = pm.response.json();",
+                      "pm.collectionVariables.set('mssqlDataSourceId', json.id);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
               "name": "Create Query Template",
               "request": {
                 "method": "POST",

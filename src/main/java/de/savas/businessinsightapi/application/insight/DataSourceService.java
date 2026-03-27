@@ -12,9 +12,11 @@ import org.springframework.stereotype.Service;
 public class DataSourceService {
 
     private final DataSourceRepository repo;
+    private final JdbcConnectionProvider jdbcConnectionProvider;
 
-    public DataSourceService(DataSourceRepository repo) {
+    public DataSourceService(DataSourceRepository repo, JdbcConnectionProvider jdbcConnectionProvider) {
         this.repo = repo;
+        this.jdbcConnectionProvider = jdbcConnectionProvider;
     }
 
     public Page<DataSource> list(Long organizationId, Pageable pageable) {
@@ -96,5 +98,24 @@ public class DataSourceService {
             throw new BadRequestException("port must be between 1 and 65535");
         }
         return port;
+    }
+    
+    public ConnectionTestResult testConnection(Long organizationId, Long id) {
+        DataSource dataSource = get(organizationId, id);
+        
+        long startTime = System.currentTimeMillis();
+        try {
+            org.springframework.jdbc.core.JdbcTemplate jdbcTemplate = jdbcConnectionProvider.templateFor(dataSource);
+            // Execute a simple query to test the connection
+            jdbcTemplate.queryForObject("SELECT 1", Integer.class);
+            long latencyMs = System.currentTimeMillis() - startTime;
+            return new ConnectionTestResult(true, latencyMs, null);
+        } catch (Exception e) {
+            long latencyMs = System.currentTimeMillis() - startTime;
+            return new ConnectionTestResult(false, latencyMs, e.getMessage());
+        }
+    }
+    
+    public record ConnectionTestResult(boolean ok, long latencyMs, String error) {
     }
 }

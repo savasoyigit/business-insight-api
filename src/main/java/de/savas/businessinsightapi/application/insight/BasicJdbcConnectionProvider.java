@@ -12,17 +12,27 @@ public class BasicJdbcConnectionProvider implements JdbcConnectionProvider {
 
     private final DataSourceSecretResolver secretResolver;
     private final InsightExecutionProperties properties;
+    private final SqlDialectFactory dialectFactory;
 
-    public BasicJdbcConnectionProvider(DataSourceSecretResolver secretResolver, InsightExecutionProperties properties) {
+    public BasicJdbcConnectionProvider(DataSourceSecretResolver secretResolver, 
+                                      InsightExecutionProperties properties,
+                                      SqlDialectFactory dialectFactory) {
         this.secretResolver = secretResolver;
         this.properties = properties;
+        this.dialectFactory = dialectFactory;
     }
 
     @Override
     public JdbcTemplate templateFor(DataSource dataSource) {
+        SqlDialect dialect = dialectFactory.getDialect(dataSource.getType());
+        
         DriverManagerDataSource jdbcDataSource = new DriverManagerDataSource();
-        jdbcDataSource.setDriverClassName(driverClassName(dataSource.getType()));
-        jdbcDataSource.setUrl(jdbcUrl(dataSource));
+        jdbcDataSource.setDriverClassName(dialect.getDriverClassName());
+        jdbcDataSource.setUrl(dialect.buildJdbcUrl(
+                dataSource.getHost(),
+                dataSource.getPort(),
+                dataSource.getDatabaseName()
+        ));
         jdbcDataSource.setUsername(dataSource.getUsername());
         jdbcDataSource.setPassword(secretResolver.resolve(dataSource));
 
@@ -30,23 +40,5 @@ public class BasicJdbcConnectionProvider implements JdbcConnectionProvider {
         jdbcTemplate.setQueryTimeout(properties.queryTimeoutSeconds());
         jdbcTemplate.setMaxRows(properties.maxRows());
         return jdbcTemplate;
-    }
-
-    private String driverClassName(DataSourceType type) {
-        return switch (type) {
-            case POSTGRES -> "org.postgresql.Driver";
-            case MSSQL -> throw new BadRequestException("MSSQL routing is not supported yet");
-        };
-    }
-
-    private String jdbcUrl(DataSource dataSource) {
-        return switch (dataSource.getType()) {
-            case POSTGRES -> "jdbc:postgresql://%s:%d/%s".formatted(
-                    dataSource.getHost(),
-                    dataSource.getPort(),
-                    dataSource.getDatabaseName()
-            );
-            case MSSQL -> throw new BadRequestException("MSSQL routing is not supported yet");
-        };
     }
 }

@@ -86,7 +86,7 @@ public class QueryExecutionService {
                                             boolean snapshot,
                                             Long datasetId) {
         LoadedExecutionContext context = loadContext(orgId, queryTemplateId);
-        ValidationResult validation = validateInternal(context.queryTemplate(), params);
+        ValidationResult validation = validateInternal(context.queryTemplate(), context.dataSource(), params);
         if (!validation.valid()) {
             throw new BadRequestException(String.join("; ", validation.errors()));
         }
@@ -96,7 +96,7 @@ public class QueryExecutionService {
 
         Instant start = Instant.now();
         try {
-            String sql = sqlValidator.applyLimitIfMissing(context.queryTemplate().getSqlText(), properties.maxRows());
+            String sql = sqlValidator.applyLimitIfMissing(context.queryTemplate().getSqlText(), properties.maxRows(), context.dataSource().getType());
             JdbcTemplate jdbcTemplate = jdbcConnectionProvider.templateFor(context.dataSource());
             NamedParameterJdbcTemplate namedJdbcTemplate = new NamedParameterJdbcTemplate(jdbcTemplate);
             MapSqlParameterSource parameterSource = buildSqlParameters(context.queryTemplate(), validation.allowedParams(), params);
@@ -135,7 +135,7 @@ public class QueryExecutionService {
 
     public ValidationResult validate(Long orgId, Long queryTemplateId, Map<String, Object> params) {
         LoadedExecutionContext context = loadContext(orgId, queryTemplateId);
-        return validateInternal(context.queryTemplate(), params);
+        return validateInternal(context.queryTemplate(), context.dataSource(), params);
     }
 
     private LoadedExecutionContext loadContext(Long orgId, Long queryTemplateId) {
@@ -165,9 +165,9 @@ public class QueryExecutionService {
         return new LoadedExecutionContext(queryTemplate, dataSource);
     }
 
-    private ValidationResult validateInternal(QueryTemplate queryTemplate, Map<String, Object> params) {
+    private ValidationResult validateInternal(QueryTemplate queryTemplate, DataSource dataSource, Map<String, Object> params) {
         Map<String, Object> safeParams = params == null ? Map.of() : params;
-        InsightSqlValidator.ValidationResult sqlValidation = sqlValidator.validateSql(queryTemplate.getSqlText());
+        InsightSqlValidator.ValidationResult sqlValidation = sqlValidator.validateSql(queryTemplate.getSqlText(), dataSource.getType());
         Set<String> detectedParams = sqlValidation.detectedParams();
         Map<String, ParameterDefinition> definitions = parameterDefinitions(queryTemplate);
         Set<String> allowedParams = allowedParams(definitions, detectedParams);
