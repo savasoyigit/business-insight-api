@@ -1,10 +1,10 @@
 package de.savas.businessinsightapi.application.insight;
 
 import de.savas.businessinsightapi.common.error.BadRequestException;
+import de.savas.businessinsightapi.domain.insight.datasource.DataSourceType;
 import org.springframework.stereotype.Component;
 
 import java.util.LinkedHashSet;
-import java.util.Locale;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -13,6 +13,7 @@ import java.util.regex.Pattern;
 public class InsightSqlValidator {
 
     private static final Pattern PARAM_PATTERN = Pattern.compile("(?<!:):([a-zA-Z][a-zA-Z0-9_]*)");
+    private static final Pattern DYNAMIC_IDENTIFIER_PATTERN = Pattern.compile("(\\$\\{[^}]+}|\\{\\{[^}]+}})");
     
     private final SqlDialectFactory dialectFactory;
 
@@ -26,6 +27,10 @@ public class InsightSqlValidator {
         if (sqlText == null || sqlText.isBlank()) {
             errors.add("sqlText is required");
         } else {
+            if (DYNAMIC_IDENTIFIER_PATTERN.matcher(sqlText).find()) {
+                errors.add("Dynamic SQL identifiers are not allowed");
+            }
+
             SqlDialect dialect = dialectFactory.getDialect(dataSourceType);
             SqlDialect.ValidationResult dialectValidation = dialect.validateSelectOnly(sqlText);
             
@@ -62,10 +67,6 @@ public class InsightSqlValidator {
         }
         SqlDialect dialect = dialectFactory.getDialect(dataSourceType);
         return dialect.applyLimit(sqlText, maxRows);
-    }
-
-    private String normalize(String sqlText) {
-        return sqlText == null ? "" : sqlText.trim().toLowerCase(Locale.ROOT).replaceAll("\\s+", " ");
     }
 
     public record ValidationResult(boolean valid, Set<String> errors, Set<String> detectedParams) {

@@ -2,6 +2,7 @@ package de.savas.businessinsightapi.application.insight;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import de.savas.businessinsightapi.common.error.BadRequestException;
@@ -15,6 +16,12 @@ import de.savas.businessinsightapi.domain.insight.run.QueryRunRepository;
 import de.savas.businessinsightapi.domain.insight.run.QueryRunStatus;
 import de.savas.businessinsightapi.domain.insight.snapshot.DatasetSnapshot;
 import de.savas.businessinsightapi.domain.insight.snapshot.DatasetSnapshotRepository;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.jdbc.core.ColumnMapRowMapper;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
@@ -23,7 +30,9 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
+import java.nio.charset.StandardCharsets;
 import java.math.BigDecimal;
+import java.security.MessageDigest;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -35,9 +44,15 @@ import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
 @Service
 public class QueryExecutionService {
+    private static final Duration EXECUTION_CONTEXT_CACHE_TTL = Duration.ofSeconds(30);
+
+
+    private static final Logger log = LoggerFactory.getLogger(QueryExecutionService.class);
 
     private final DataSourceRepository dataSourceRepo;
     private final QueryTemplateRepository queryTemplateRepo;
@@ -47,6 +62,8 @@ public class QueryExecutionService {
     private final InsightExecutionProperties properties;
     private final InsightSqlValidator sqlValidator;
     private final ObjectMapper objectMapper;
+    private final MeterRegistry meterRegistry;
+    private final ConcurrentMap<String, CachedExecutionContext> executionContextCache = new ConcurrentHashMap<>();
 
     public QueryExecutionService(
             DataSourceRepository dataSourceRepo,
@@ -56,7 +73,8 @@ public class QueryExecutionService {
             JdbcConnectionProvider jdbcConnectionProvider,
             InsightExecutionProperties properties,
             InsightSqlValidator sqlValidator,
-            ObjectMapper objectMapper
+                ObjectMapper objectMapper,
+                MeterRegistry meterRegistry
     ) {
         this.dataSourceRepo = dataSourceRepo;
         this.queryTemplateRepo = queryTemplateRepo;
@@ -66,10 +84,15 @@ public class QueryExecutionService {
         this.properties = properties;
         this.sqlValidator = sqlValidator;
         this.objectMapper = objectMapper;
+        this.meterRegistry = meterRegistry;
     }
 
     public ExecutionResult execute(Long orgId, Long queryTemplateId, Map<String, Object> params, boolean snapshot) {
         return executeInternal(orgId, queryTemplateId, params, snapshot, null);
+    }
+
+    public Page<QueryRun> listRuns(Long orgId, Pageable pageable) {
+        return queryRunRepo.findAllByOrganizationId(orgId, pageable);
     }
 
     public ExecutionResult executeForDataset(Long orgId, Dataset dataset, Map<String, Object> params) {
@@ -92,8 +115,11 @@ public class QueryExecutionService {
         }
 
         String requestedBy = currentUsername();
-        QueryRun run = queryRunRepo.save(new QueryRun(orgId, queryTemplateId, context.dataSource().getId(), requestedBy));
+        QueryRun run = new QueryRun(orgId, queryTemplateId, context.dataSource().getId(), requestedBy);
+        run.setQueryHash(queryHash(context.queryTemplate().getSqlText()));
+        run = queryRunRepo.save(run);
 
+        Timer.Sample executionTimer = Timer.start(meterRegistry);
         Instant start = Instant.now();
         try {
             String sql = sqlValidator.applyLimitIfMissing(context.queryTemplate().getSqlText(), properties.maxRows(), context.dataSource().getType());
@@ -106,6 +132,9 @@ public class QueryExecutionService {
             long durationMs = Duration.between(start, Instant.now()).toMillis();
             run.markSuccess(rows.size(), durationMs);
             queryRunRepo.save(run);
+                meterRegistry.counter("insight.query.execute.success").increment();
+                log.info("Query execution success runId={} orgId={} queryTemplateId={} rows={} durationMs={} dataSourceId={}",
+                    run.getId(), orgId, queryTemplateId, rows.size(), durationMs, context.dataSource().getId());
 
             DatasetSnapshot savedSnapshot = null;
             if (snapshot) {
@@ -123,22 +152,45 @@ public class QueryExecutionService {
                     requestedBy,
                     context.dataSource().getId(),
                     queryTemplateId,
-                    savedSnapshot == null ? null : savedSnapshot.getId()
+                    savedSnapshot == null ? null : savedSnapshot.getId(),
+                    run.getQueryHash(),
+                    run.getErrorType()
             );
         } catch (Exception ex) {
             long durationMs = Duration.between(start, Instant.now()).toMillis();
-            run.markFailed(safeMessage(ex), durationMs);
+            String errorType = classifyErrorType(ex);
+            run.markFailed(safeMessage(ex), errorType, durationMs);
             queryRunRepo.save(run);
+            meterRegistry.counter("insight.query.execute.failed", "errorType", errorType).increment();
+            log.warn("Query execution failed runId={} orgId={} queryTemplateId={} errorType={} durationMs={} message={}",
+                    run.getId(), orgId, queryTemplateId, errorType, durationMs, safeMessage(ex));
             throw new BadRequestException("Query execution failed: " + safeMessage(ex));
+        } finally {
+            executionTimer.stop(Timer.builder("insight.query.execute.duration")
+                    .description("Duration of query executions")
+                    .register(meterRegistry));
         }
     }
 
     public ValidationResult validate(Long orgId, Long queryTemplateId, Map<String, Object> params) {
+        Timer.Sample validationTimer = Timer.start(meterRegistry);
         LoadedExecutionContext context = loadContext(orgId, queryTemplateId);
-        return validateInternal(context.queryTemplate(), context.dataSource(), params);
+        try {
+            return validateInternal(context.queryTemplate(), context.dataSource(), params);
+        } finally {
+            validationTimer.stop(Timer.builder("insight.query.validate.duration")
+                    .description("Duration of query validations")
+                    .register(meterRegistry));
+        }
     }
 
     private LoadedExecutionContext loadContext(Long orgId, Long queryTemplateId) {
+        String cacheKey = orgId + ":" + queryTemplateId;
+        CachedExecutionContext cachedContext = executionContextCache.get(cacheKey);
+        if (cachedContext != null && !cachedContext.isExpired()) {
+            return cachedContext.context();
+        }
+
         QueryTemplate queryTemplate = queryTemplateRepo.findById(queryTemplateId)
                 .orElseThrow(() -> new BadRequestException("QueryTemplate not found"));
 
@@ -162,7 +214,9 @@ public class QueryExecutionService {
             throw new BadRequestException("QueryTemplate does not belong to the requested DataSource");
         }
 
-        return new LoadedExecutionContext(queryTemplate, dataSource);
+        LoadedExecutionContext loaded = new LoadedExecutionContext(queryTemplate, dataSource);
+        executionContextCache.put(cacheKey, new CachedExecutionContext(loaded, Instant.now().plus(EXECUTION_CONTEXT_CACHE_TTL)));
+        return loaded;
     }
 
     private ValidationResult validateInternal(QueryTemplate queryTemplate, DataSource dataSource, Map<String, Object> params) {
@@ -298,7 +352,7 @@ public class QueryExecutionService {
         if (defaultParams == null || defaultParams.isNull()) {
             return Map.of();
         }
-        return objectMapper.convertValue(defaultParams, Map.class);
+        return objectMapper.convertValue(defaultParams, new TypeReference<Map<String, Object>>() {});
     }
 
     private JsonNode toJson(List<Map<String, Object>> rows) {
@@ -314,8 +368,33 @@ public class QueryExecutionService {
     private String safeMessage(Exception ex) {
         String msg = ex.getMessage();
         if (msg == null) return "unknown_error";
-        // Avoid leaking credentials
+        msg = msg.replaceAll("(?i)(password|secret|token|authorization)\\s*[=:]\\s*[^,;\\s]+", "$1=***");
+        msg = msg.replaceAll("(?i)[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}", "***@***");
         return msg.length() > 600 ? msg.substring(0, 600) : msg;
+    }
+
+    private String classifyErrorType(Exception ex) {
+        if (ex instanceof BadRequestException) {
+            return "VALIDATION";
+        }
+        return ex.getClass().getSimpleName();
+    }
+
+    private String queryHash(String sqlText) {
+        if (sqlText == null) {
+            return null;
+        }
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] bytes = digest.digest(sqlText.trim().toLowerCase(Locale.ROOT).getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder();
+            for (byte b : bytes) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.toString();
+        } catch (Exception ex) {
+            return null;
+        }
     }
 
     private String currentUsername() {
@@ -329,6 +408,12 @@ public class QueryExecutionService {
     private record LoadedExecutionContext(QueryTemplate queryTemplate, DataSource dataSource) {
     }
 
+    private record CachedExecutionContext(LoadedExecutionContext context, Instant expiresAt) {
+        boolean isExpired() {
+            return Instant.now().isAfter(expiresAt);
+        }
+    }
+
     private record ParameterDefinition(String name, String type, boolean required) {
     }
 
@@ -340,7 +425,9 @@ public class QueryExecutionService {
             String requestedBy,
             Long dataSourceId,
             Long queryTemplateId,
-            Long snapshotId
+            Long snapshotId,
+            String queryHash,
+            String errorType
     ) {
     }
 

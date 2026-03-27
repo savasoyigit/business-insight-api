@@ -10,6 +10,7 @@ It supports this flow:
 
 - Java 17
 - Spring Boot
+- Spring Boot Actuator (Micrometer metrics)
 - Spring Security with JWT
 - PostgreSQL
 - Flyway
@@ -191,6 +192,25 @@ Main permission groups:
 - dashboard: `INSIGHT_DASHBOARD_*`
 - admin RBAC: `RBAC_*`
 
+Phase 5 hardening:
+
+- login rate limiting (per user and IP window)
+- account lockout after repeated failed login attempts
+- password policy enforcement on registration
+- RBAC admin audit logs for role and assignment changes
+- SQL safety checks block dynamic identifier templates (for example `${...}` and `{{...}}`)
+
+## Observability
+
+- Correlation ID support via `X-Correlation-Id` request/response header
+- Log correlation with `correlationId` in log context
+- Query execution metrics and timings via Micrometer
+- Actuator endpoints exposed:
+  - `/actuator/health`
+  - `/actuator/info`
+  - `/actuator/metrics`
+  - `/actuator/prometheus`
+
 ## Main Endpoints
 
 ### DataSource
@@ -205,6 +225,7 @@ Main permission groups:
 
 - `POST /api/insight/query-execution/validate`
 - `POST /api/insight/query-execution/execute`
+- `GET /api/insight/query-execution/runs` (paged)
 
 ### Dataset
 
@@ -213,8 +234,19 @@ Main permission groups:
 - `POST /api/insight/datasets`
 - `PUT /api/insight/datasets/{id}`
 - `DELETE /api/insight/datasets/{id}`
-- `GET /api/insight/datasets/{id}/snapshots`
+- `GET /api/insight/datasets/{id}/snapshots` (paged)
 - `POST /api/insight/datasets/{id}/snapshots`
+
+### RBAC Admin
+
+- `GET /api/admin/rbac/permissions`
+- `GET /api/admin/rbac/roles`
+- `POST /api/admin/rbac/roles`
+- `PUT /api/admin/rbac/roles/{id}`
+- `PUT /api/admin/rbac/roles/{id}/permissions`
+- `GET /api/admin/rbac/users`
+- `PUT /api/admin/rbac/users/{id}/roles`
+- `GET /api/admin/rbac/audit-logs` (paged)
 
 ### Chart
 
@@ -290,9 +322,11 @@ Recommended execution order in Postman:
 4. Validate Query Execution
 5. Create Dataset
 6. Create Dataset Snapshot
-7. Create Chart
-8. Render Chart
-9. Create Dashboard
+7. List Query Runs (paged)
+8. Create Chart
+9. Render Chart
+10. Create Dashboard
+11. RBAC audit logs (admin)
 
 ## Example BI Flow
 

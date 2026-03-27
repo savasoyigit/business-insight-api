@@ -43,6 +43,12 @@ public class QueryRun {
     @Column(name="error_message", columnDefinition = "text")
     private String errorMessage;
 
+    @Column(name = "query_hash", length = 64)
+    private String queryHash;
+
+    @Column(name = "error_type", length = 100)
+    private String errorType;
+
     protected QueryRun() {}
 
     public QueryRun(Long organizationId, Long queryTemplateId, Long dataSourceId, String requestedBy) {
@@ -64,6 +70,12 @@ public class QueryRun {
     public Long getDurationMs() { return durationMs; }
     public Integer getRowCount() { return rowCount; }
     public String getErrorMessage() { return errorMessage; }
+    public String getQueryHash() { return queryHash; }
+    public String getErrorType() { return errorType; }
+
+    public void setQueryHash(String queryHash) {
+        this.queryHash = queryHash;
+    }
 
     public void markSuccess(int rowCount, long durationMs) {
         this.status = QueryRunStatus.SUCCESS;
@@ -71,12 +83,15 @@ public class QueryRun {
         this.rowCount = rowCount;
         this.durationMs = durationMs;
         this.errorMessage = null;
+        this.errorType = null;
     }
 
-    public void markFailed(String message, long durationMs) {
+    public void markFailed(String message, String errorType, long durationMs) {
         this.status = QueryRunStatus.FAILED;
         this.finishedAt = OffsetDateTime.now();
         this.durationMs = durationMs;
         this.errorMessage = message;
+        this.errorType = errorType;
     }
+
 }
