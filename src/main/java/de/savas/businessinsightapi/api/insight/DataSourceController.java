@@ -64,4 +64,10 @@ public class DataSourceController {
                 req.active()
         ));
     }
+    
+    @PostMapping("/{id}/test")
+    @PreAuthorize("hasAuthority('INSIGHT_DS_READ')")
+    public ConnectionTestResponse testConnection(@RequestParam Long orgId, @PathVariable Long id) {
+        return ConnectionTestResponse.from(service.testConnection(orgId, id));
+    }
 }

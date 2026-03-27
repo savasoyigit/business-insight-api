@@ -57,4 +57,18 @@ public class DataSourceDtos {
             );
         }
     }
+    
+    public record ConnectionTestResponse(
+            boolean ok,
+            long latencyMs,
+            String error
+    ) {
+        public static ConnectionTestResponse from(de.savas.businessinsightapi.application.insight.DataSourceService.ConnectionTestResult result) {
+            return new ConnectionTestResponse(
+                    result.ok(),
+                    result.latencyMs(),
+                    result.error()
+            );
+        }
+    }
 }
