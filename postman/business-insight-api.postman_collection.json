@@ -377,6 +377,49 @@
                 }
               ]
             }
+            ,
+            {
+              "name": "List Query Runs (Paged)",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/insight/query-execution/runs?orgId={{orgId}}&page={{page}}&size={{size}}&sort={{runSort}}",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "insight",
+                    "query-execution",
+                    "runs"
+                  ],
+                  "query": [
+                    {
+                      "key": "orgId",
+                      "value": "{{orgId}}"
+                    },
+                    {
+                      "key": "page",
+                      "value": "{{page}}"
+                    },
+                    {
+                      "key": "size",
+                      "value": "{{size}}"
+                    },
+                    {
+                      "key": "sort",
+                      "value": "{{runSort}}"
+                    }
+                  ]
+                }
+              }
+            }
           ]
         },
         {
@@ -523,7 +566,7 @@
                   }
                 ],
                 "url": {
-                  "raw": "{{baseUrl}}/api/insight/datasets/{{datasetId}}/snapshots?orgId={{orgId}}",
+                  "raw": "{{baseUrl}}/api/insight/datasets/{{datasetId}}/snapshots?orgId={{orgId}}&page={{page}}&size={{size}}&sort={{snapshotSort}}",
                   "host": [
                     "{{baseUrl}}"
                   ],
@@ -538,6 +581,18 @@
                     {
                       "key": "orgId",
                       "value": "{{orgId}}"
+                    },
+                    {
+                      "key": "page",
+                      "value": "{{page}}"
+                    },
+                    {
+                      "key": "size",
+                      "value": "{{size}}"
+                    },
+                    {
+                      "key": "sort",
+                      "value": "{{snapshotSort}}"
                     }
                   ]
                 }
@@ -905,6 +960,44 @@
               "raw": "{\n  \"roleNames\": [\"ANALYST\"]\n}"
             }
           }
+        },
+        {
+          "name": "List Audit Logs (Paged)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/rbac/audit-logs?page={{page}}&size={{size}}&sort={{auditSort}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "rbac",
+                "audit-logs"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "{{page}}"
+                },
+                {
+                  "key": "size",
+                  "value": "{{size}}"
+                },
+                {
+                  "key": "sort",
+                  "value": "{{auditSort}}"
+                }
+              ]
+            }
+          }
         }
       ]
     }
@@ -936,7 +1029,7 @@
     },
     {
       "key": "registerPassword",
-      "value": "Test1234!"
+      "value": "TestUser_2026!Aa"
     },
     {
       "key": "adminUsername",
@@ -1045,6 +1138,26 @@
     {
       "key": "snapshotId",
       "value": ""
+    },
+    {
+      "key": "page",
+      "value": "0"
+    },
+    {
+      "key": "size",
+      "value": "20"
+    },
+    {
+      "key": "runSort",
+      "value": "startedAt,desc"
+    },
+    {
+      "key": "snapshotSort",
+      "value": "createdAt,desc"
+    },
+    {
+      "key": "auditSort",
+      "value": "createdAt,desc"
     }
   ]
 }

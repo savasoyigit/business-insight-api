@@ -1,8 +1,6 @@
 package de.savas.businessinsightapi.application.insight;
 
-import de.savas.businessinsightapi.common.error.BadRequestException;
 import de.savas.businessinsightapi.domain.insight.datasource.DataSource;
-import de.savas.businessinsightapi.domain.insight.datasource.DataSourceType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.stereotype.Component;
