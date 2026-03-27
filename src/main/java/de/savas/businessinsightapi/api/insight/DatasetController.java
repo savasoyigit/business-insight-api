@@ -9,8 +9,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
-
 @RestController
 @RequestMapping("/api/insight/datasets")
 public class DatasetController {
@@ -55,8 +53,8 @@ public class DatasetController {
 
     @GetMapping("/{id}/snapshots")
     @PreAuthorize("hasAuthority('INSIGHT_DATASET_READ')")
-    public List<DatasetSnapshotResponse> listSnapshots(@RequestParam Long orgId, @PathVariable Long id) {
-        return service.listSnapshots(orgId, id).stream().map(DatasetSnapshotResponse::from).toList();
+    public Page<DatasetSnapshotResponse> listSnapshots(@RequestParam Long orgId, @PathVariable Long id, Pageable pageable) {
+        return service.listSnapshots(orgId, id, pageable).map(DatasetSnapshotResponse::from);
     }
 
     @PostMapping("/{id}/snapshots")

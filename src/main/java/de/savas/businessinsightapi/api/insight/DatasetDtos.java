@@ -79,7 +79,9 @@ public class DatasetDtos {
             String requestedBy,
             Long dataSourceId,
             Long queryTemplateId,
-            Long snapshotId
+                        Long snapshotId,
+                        String queryHash,
+                        String errorType
     ) {
         public static CreateSnapshotResponse from(QueryExecutionService.ExecutionResult result) {
             return new CreateSnapshotResponse(
@@ -90,7 +92,9 @@ public class DatasetDtos {
                     result.requestedBy(),
                     result.dataSourceId(),
                     result.queryTemplateId(),
-                    result.snapshotId()
+                                        result.snapshotId(),
+                                        result.queryHash(),
+                                        result.errorType()
             );
         }
     }

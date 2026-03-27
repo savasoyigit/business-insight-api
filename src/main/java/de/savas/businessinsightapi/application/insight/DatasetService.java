@@ -14,7 +14,6 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
-import java.util.List;
 import java.util.Map;
 
 @Service
@@ -78,9 +77,9 @@ public class DatasetService {
         datasetRepo.delete(dataset);
     }
 
-    public List<DatasetSnapshot> listSnapshots(Long organizationId, Long datasetId) {
+    public Page<DatasetSnapshot> listSnapshots(Long organizationId, Long datasetId, Pageable pageable) {
         get(organizationId, datasetId);
-        return snapshotRepo.findAllByOrganizationIdAndDatasetIdOrderByCreatedAtDesc(organizationId, datasetId);
+        return snapshotRepo.findAllByOrganizationIdAndDatasetIdOrderByCreatedAtDesc(organizationId, datasetId, pageable);
     }
 
     public QueryExecutionService.ExecutionResult createSnapshot(Long organizationId, Long datasetId, Map<String, Object> params) {
