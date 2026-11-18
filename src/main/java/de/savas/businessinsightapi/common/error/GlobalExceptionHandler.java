@@ -1,9 +1,12 @@
 package de.savas.businessinsightapi.common.error;
 
 import jakarta.servlet.http.HttpServletRequest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import jakarta.validation.ConstraintViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -14,6 +17,8 @@ import java.util.stream.Collectors;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     // 400 - Request body validation errors (@Valid)
     @ExceptionHandler(MethodArgumentNotValidException.class)
@@ -42,6 +47,15 @@ public class GlobalExceptionHandler {
                 .collect(Collectors.joining(", "));
 
         return buildError(HttpStatus.BAD_REQUEST, message, request.getRequestURI());
+    }
+
+    // 400 - Malformed JSON / wrong types in the request body
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ApiError> handleNotReadable(
+            HttpMessageNotReadableException ex,
+            HttpServletRequest request
+    ) {
+        return buildError(HttpStatus.BAD_REQUEST, "Malformed request body", request.getRequestURI());
     }
 
     // 400 - Our custom bad request
@@ -77,7 +91,8 @@ public class GlobalExceptionHandler {
             Exception ex,
             HttpServletRequest request
     ) {
-        // In real life we would log ex with a correlationId.
+        // Details stay in the logs (correlationId is in the MDC), never in the response.
+        log.error("Unhandled exception on {} {}", request.getMethod(), request.getRequestURI(), ex);
         return buildError(
                 HttpStatus.INTERNAL_SERVER_ERROR,
                 "Unexpected error occurred",

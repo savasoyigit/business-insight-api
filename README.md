@@ -6,6 +6,18 @@ It supports this flow:
 
 `DataSource -> QueryTemplate -> Dataset -> Snapshot -> Chart -> Dashboard`
 
+## Frontend: Insight Studio
+
+**Live demo:** https://savasoyigit.github.io/business-insight-api/ (runs fully in the browser, no backend needed)
+
+The repository ships a React + TypeScript web UI in [`frontend/`](frontend/README.md) that covers the whole flow,
+query-run history and RBAC administration. It also has a **demo sandbox** that runs fully in the browser,
+so it can be hosted as a static showcase without the backend.
+
+```bash
+cd frontend && npm install && npm run dev   # http://localhost:5173, proxies /api to :8080
+```
+
 ## Stack
 
 - Java 17
@@ -288,6 +300,9 @@ Linux/macOS:
 export JWT_SECRET=your_long_random_secret_here
 export ERP_REPORTING_PASSWORD=your_readonly_password
 ```
+
+Optional: `CORS_ALLOWED_ORIGINS` (comma-separated, default `http://localhost:5173`) lists the browser origins
+allowed to call the API directly, for example where the frontend is hosted.
 
 ### 3. Run the application
 
