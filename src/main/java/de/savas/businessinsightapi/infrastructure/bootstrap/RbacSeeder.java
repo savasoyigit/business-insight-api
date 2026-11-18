@@ -100,7 +100,7 @@ public class RbacSeeder implements ApplicationRunner {
 
 // 3️⃣ Admin user ensure
         String adminUsername = env("ADMIN_USERNAME", "admin");
-        String adminEmail    = env("ADMIN_EMAIL", "admin@local.dev");
+        String adminEmail    = env("ADMIN_EMAIL", "admin@example.com");
         String adminPassword = env("ADMIN_PASSWORD", DEFAULT_ADMIN_PASSWORD);
 
         Optional<User> existing = userRepo.findByUsername(adminUsername);

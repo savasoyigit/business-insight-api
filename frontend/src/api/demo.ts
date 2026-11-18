@@ -10,8 +10,9 @@ import type {
 } from './types';
 import { ApiError } from './types';
 import { aggregate } from '../lib/render';
+import { detectParams, guardSql } from '../lib/sql';
 
-const STORAGE_KEY = 'insight-studio.demo.v4';
+const STORAGE_KEY = 'insight-studio.demo.v5';
 export const DEMO_ORG = 1;
 
 export const ALL_PERMISSIONS: [string, string][] = [
@@ -162,9 +163,9 @@ function seedState(): DemoState {
       { id: 3, name: 'VIEWER', description: 'Read-only access to BI assets', permissionCodes: [...READ_PERMS].sort() },
     ],
     users: [
-      { id: 1, username: 'admin', email: 'admin@local.dev', roleNames: ['ADMIN'], organizationIds: [1, 2] },
-      { id: 2, username: 'analyst', email: 'analyst@local.dev', roleNames: ['ANALYST'], organizationIds: [1] },
-      { id: 3, username: 'viewer', email: 'viewer@local.dev', roleNames: ['VIEWER'], organizationIds: [1] },
+      { id: 1, username: 'admin', email: 'admin@example.com', roleNames: ['ADMIN'], organizationIds: [1, 2] },
+      { id: 2, username: 'analyst', email: 'analyst@example.com', roleNames: ['ANALYST'], organizationIds: [1] },
+      { id: 3, username: 'viewer', email: 'viewer@example.com', roleNames: ['VIEWER'], organizationIds: [1] },
     ],
     organizations: [
       { id: 1, name: 'Ember & Bean Roasters', createdAt: iso(60 * 24 * 30) },
@@ -281,26 +282,7 @@ function schedule(cron: string | undefined | null): { refreshCron: string | null
 
 // ---------- SQL guardrails (port of InsightSqlValidator) ----------
 
-const FORBIDDEN = /\b(insert|update|delete|merge|drop|alter|create|truncate|grant|revoke|exec|execute|call)\b/i;
 
-export function guardSql(sql: string): string[] {
-  const errors: string[] = [];
-  const trimmed = sql.trim();
-  if (!/^(select|with)\b/i.test(trimmed)) errors.push('Only SELECT statements are allowed');
-  if (trimmed.includes(';')) errors.push("';' is not allowed (single statement only)");
-  if (FORBIDDEN.test(trimmed)) errors.push('DDL/DML keywords are not allowed');
-  if (/\$\{|\{\{/.test(trimmed)) errors.push('Dynamic identifier templates are not allowed');
-  // Structural checks done server-side by SqlStatementGuard (JSqlParser).
-  if (!errors.length && /^select\b[\s\S]*\binto\b/i.test(trimmed) && !/\binsert\s+into\b/i.test(trimmed)) errors.push('SELECT ... INTO is not allowed');
-  if (!errors.length && /\bfor\s+(update|share|no\s+key\s+update|key\s+share)\b/i.test(trimmed)) errors.push('Locking clauses (FOR UPDATE/SHARE) are not allowed');
-  return errors;
-}
-
-export function detectParams(sql: string): string[] {
-  const found = new Set<string>();
-  for (const m of sql.matchAll(/(?<!:):([a-zA-Z_][a-zA-Z0-9_]*)/g)) found.add(m[1]);
-  return [...found];
-}
 
 // ---------- the API ----------
 
