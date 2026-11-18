@@ -4,14 +4,14 @@
  * Mirrors the real guardrails: SELECT-only validation, named params, RBAC permissions, org scoping.
  */
 import type {
-  Api, AuditLog, Me, Organization, Chart, ChartInput, Dashboard, DashboardInput, DataSource, DataSourceInput, Dataset,
+  Api, AuditLog, Me, Organization, RunDetails, SubmittedRun, Chart, ChartInput, Dashboard, DashboardInput, DataSource, DataSourceInput, Dataset,
   DatasetInput, ExecuteResult, Json, Page, PageRequest, Permission, QueryRun, QueryTemplate,
   QueryTemplateInput, Role, Snapshot, UserRoles, ValidateResult,
 } from './types';
 import { ApiError } from './types';
 import { aggregate } from '../lib/render';
 
-const STORAGE_KEY = 'insight-studio.demo.v3';
+const STORAGE_KEY = 'insight-studio.demo.v4';
 export const DEMO_ORG = 1;
 
 export const ALL_PERMISSIONS: [string, string][] = [
@@ -205,7 +205,9 @@ function seedState(): DemoState {
     [4, 'Ticket resolution', 4, {}],
   ];
   dsDefs.forEach(([id, name, qt, params], i) => {
-    s.datasets.push({ org, id, name, queryTemplateId: qt, defaultParams: params, createdBy: 'analyst', createdAt: iso(60 * 24 * (5 - i)) });
+    const refreshCron = id === 1 ? '@hourly' : id === 3 ? '0 6 * * *' : null;
+    s.datasets.push({ org, id, name, queryTemplateId: qt, defaultParams: params, createdBy: 'analyst', createdAt: iso(60 * 24 * (5 - i)),
+      refreshCron, nextRefreshAt: nextFire(refreshCron), lastRefreshAt: refreshCron ? iso(37) : null });
     const t = s.templates.find((x) => x.id === qt)!;
     const rows = generatorFor(t)(params, id * 97);
     s.runs.push({ org, id, status: 'SUCCESS', requestedBy: 'analyst', queryTemplateId: qt, dataSourceId: t.dataSourceId, durationMs: 80 + id * 37, rowCount: rows.length, queryHash: hash(t.sqlText + JSON.stringify(params)), errorType: null, startedAt: iso(60 * (20 - i)), finishedAt: iso(60 * (20 - i)) });
@@ -243,6 +245,38 @@ function hash(text: string): string {
   let h = 2166136261;
   for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 16777619);
   return (h >>> 0).toString(16).padStart(8, '0');
+}
+
+// ---------- scheduled refresh (mirrors DatasetRefreshScheduler, presets only) ----------
+
+/** Rough next fire time for the UI presets; other expressions are assumed hourly in the demo. */
+function nextFire(cron: string | null): string | null {
+  if (!cron) return null;
+  const now = new Date();
+  const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), now.getUTCHours() + 1));
+  const daily = /^0 (\d{1,2}) \* \* (\*|1-5)$/.exec(cron);
+  const every = /^0 \*\/(\d{1,2}) \* \* \*$/.exec(cron);
+  if (daily) {
+    d.setUTCHours(Number(daily[1]), 0, 0, 0);
+    if (d <= now) d.setUTCDate(d.getUTCDate() + 1);
+    if (daily[2] === '1-5') while ([0, 6].includes(d.getUTCDay())) d.setUTCDate(d.getUTCDate() + 1);
+  } else if (every) {
+    const step = Number(every[1]);
+    d.setUTCHours(Math.ceil((now.getUTCHours() + 1) / step) * step, 0, 0, 0);
+  } else if (cron === '@daily') {
+    d.setUTCHours(24, 0, 0, 0);
+  }
+  return d.toISOString();
+}
+
+function schedule(cron: string | undefined | null): { refreshCron: string | null; nextRefreshAt: string | null } {
+  const c = (cron ?? '').trim().replace(/\s+/g, ' ');
+  if (!c) return { refreshCron: null, nextRefreshAt: null };
+  const macro = ['@hourly', '@daily', '@midnight', '@weekly', '@monthly', '@yearly', '@annually'].includes(c);
+  if (!macro && c.split(' ').length !== 5) throw new ApiError(400, 'refreshCron is not a valid cron expression');
+  const minute = c.split(' ')[0];
+  if (!macro && (minute === '*' || /^\*\/[1-4]$/.test(minute))) throw new ApiError(400, 'refreshCron fires too often; the minimum interval is 5 minutes');
+  return { refreshCron: c, nextRefreshAt: nextFire(c) };
 }
 
 // ---------- SQL guardrails (port of InsightSqlValidator) ----------
@@ -482,6 +516,43 @@ export class DemoApi implements Api {
     return { queryRunId: runId, status: 'SUCCESS', rowCount: rows.length, durationMs, requestedBy: this.user, dataSourceId: qt.dataSourceId, queryTemplateId: qtId, snapshotId, queryHash: hash(qt.sqlText + JSON.stringify(params)), errorType: null };
   }
 
+  /** Mirrors QueryRunJobService: validate now, record QUEUED, then RUNNING, then SUCCESS a moment later. */
+  private runLater(org: number, qtId: number, params: Json, snapshot: boolean, datasetId: number | null, requestedBy = this.user): SubmittedRun {
+    const qt = this.find(this.s.templates, org, qtId, 'QueryTemplate');
+    const v = this.validateInternal(org, qtId, params);
+    if (!v.valid) throw new ApiError(400, v.errors.join(', '));
+    const runId = this.id();
+    const run: QueryRun & { org: number } = { org, id: runId, status: 'QUEUED', requestedBy, queryTemplateId: qtId, dataSourceId: qt.dataSourceId, durationMs: 0, rowCount: null, queryHash: hash(qt.sqlText + JSON.stringify(params)), errorType: null, startedAt: new Date().toISOString(), finishedAt: null };
+    this.s.runs.push(run);
+    this.save();
+    setTimeout(() => { run.status = 'RUNNING'; run.startedAt = new Date().toISOString(); this.save(); }, 500);
+    setTimeout(() => {
+      const rows = generatorFor(qt)(params, runId * 31).slice(0, 5000);
+      Object.assign(run, { status: 'SUCCESS', rowCount: rows.length, durationMs: Math.round(700 + Math.random() * 600), finishedAt: new Date().toISOString() });
+      if (snapshot) this.s.snapshots.push({ org, id: this.id(), queryRunId: runId, datasetId, storageFormat: 'JSON', data: rows.slice(0, 500), createdAt: run.finishedAt! });
+      this.save();
+    }, 1600);
+    return { queryRunId: runId, status: 'QUEUED', coalesced: false };
+  }
+
+  async submitQuery(org: number, qtId: number, params: Json, snapshot: boolean) {
+    await this.guardOrg(org, 'INSIGHT_QUERY_EXECUTE');
+    return this.runLater(org, qtId, params, snapshot, null);
+  }
+
+  async getRun(org: number, runId: number): Promise<RunDetails> {
+    await this.guardOrg(org, 'INSIGHT_QUERY_EXECUTE');
+    const run = this.find(this.s.runs, org, runId, 'QueryRun');
+    const snap = run.status === 'SUCCESS' ? this.s.snapshots.find((x) => x.org === org && x.queryRunId === runId) : undefined;
+    return { ...this.strip(run), errorMessage: run.status === 'FAILED' ? 'Query failed' : null, snapshotId: snap?.id ?? null };
+  }
+
+  async submitSnapshot(org: number, datasetId: number, params?: Json) {
+    await this.guardOrg(org, 'INSIGHT_DATASET_CREATE');
+    const d = this.find(this.s.datasets, org, datasetId, 'Dataset');
+    return this.runLater(org, d.queryTemplateId, { ...(d.defaultParams ?? {}), ...(params ?? {}) }, true, datasetId);
+  }
+
   async executeQuery(org: number, qtId: number, params: Json, snapshot: boolean) {
     await this.guardOrg(org, 'INSIGHT_QUERY_EXECUTE');
     await delay(300);
@@ -500,7 +571,7 @@ export class DemoApi implements Api {
   async createDataset(org: number, body: DatasetInput) {
     await this.guardOrg(org, 'INSIGHT_DATASET_CREATE');
     this.find(this.s.templates, org, body.queryTemplateId, 'QueryTemplate');
-    const d = { org, id: this.id(), name: body.name, queryTemplateId: body.queryTemplateId, defaultParams: body.defaultParams ?? {}, createdBy: this.user, createdAt: new Date().toISOString() };
+    const d = { org, id: this.id(), name: body.name, queryTemplateId: body.queryTemplateId, defaultParams: body.defaultParams ?? {}, createdBy: this.user, createdAt: new Date().toISOString(), lastRefreshAt: null, ...schedule(body.refreshCron) };
     this.s.datasets.push(d);
     this.save();
     return this.strip(d);
@@ -508,7 +579,9 @@ export class DemoApi implements Api {
   async updateDataset(org: number, id: number, body: Partial<DatasetInput>) {
     await this.guardOrg(org, 'INSIGHT_DATASET_UPDATE');
     const d = this.find(this.s.datasets, org, id, 'Dataset');
-    Object.assign(d, Object.fromEntries(Object.entries(body).filter(([, v]) => v !== undefined)));
+    const { refreshCron, ...rest } = body;
+    Object.assign(d, Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined)));
+    if (refreshCron !== undefined) Object.assign(d, schedule(refreshCron));
     this.save();
     return this.strip(d);
   }

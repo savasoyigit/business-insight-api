@@ -85,9 +85,11 @@ export interface ValidateResult {
   allowedParams: string[];
 }
 
+export type RunStatus = 'QUEUED' | 'RUNNING' | 'SUCCESS' | 'FAILED';
+
 export interface ExecuteResult {
   queryRunId: number;
-  status: 'RUNNING' | 'SUCCESS' | 'FAILED';
+  status: RunStatus;
   rowCount: number;
   durationMs: number;
   requestedBy: string;
@@ -98,9 +100,16 @@ export interface ExecuteResult {
   errorType: string | null;
 }
 
+export interface SubmittedRun {
+  queryRunId: number;
+  status: RunStatus;
+  /** An identical run was already queued or running and is returned instead. */
+  coalesced: boolean;
+}
+
 export interface QueryRun {
   id: number;
-  status: 'RUNNING' | 'SUCCESS' | 'FAILED';
+  status: RunStatus;
   requestedBy: string;
   queryTemplateId: number;
   dataSourceId: number;
@@ -112,6 +121,11 @@ export interface QueryRun {
   finishedAt: string | null;
 }
 
+export interface RunDetails extends QueryRun {
+  errorMessage: string | null;
+  snapshotId: number | null;
+}
+
 export interface Dataset {
   id: number;
   name: string;
@@ -119,12 +133,18 @@ export interface Dataset {
   defaultParams: Json | null;
   createdBy: string;
   createdAt: string;
+  /** Cron for automatic snapshots; null = manual only. */
+  refreshCron: string | null;
+  nextRefreshAt: string | null;
+  lastRefreshAt: string | null;
 }
 
 export interface DatasetInput {
   name: string;
   queryTemplateId: number;
   defaultParams?: Json;
+  /** On update: undefined keeps, "" removes. */
+  refreshCron?: string;
 }
 
 export interface Snapshot {
@@ -266,6 +286,8 @@ export interface Api {
   validateQuery(org: number, queryTemplateId: number, params: Json): Promise<ValidateResult>;
   executeQuery(org: number, queryTemplateId: number, params: Json, snapshot: boolean): Promise<ExecuteResult>;
   listRuns(org: number, p?: PageRequest): Promise<Page<QueryRun>>;
+  submitQuery(org: number, queryTemplateId: number, params: Json, snapshot: boolean): Promise<SubmittedRun>;
+  getRun(org: number, runId: number): Promise<RunDetails>;
 
   listDatasets(org: number, p?: PageRequest): Promise<Page<Dataset>>;
   createDataset(org: number, body: DatasetInput): Promise<Dataset>;
@@ -273,6 +295,7 @@ export interface Api {
   deleteDataset(org: number, id: number): Promise<void>;
   listSnapshots(org: number, datasetId: number, p?: PageRequest): Promise<Page<Snapshot>>;
   createSnapshot(org: number, datasetId: number, params?: Json): Promise<ExecuteResult>;
+  submitSnapshot(org: number, datasetId: number, params?: Json): Promise<SubmittedRun>;
 
   listCharts(org: number, p?: PageRequest): Promise<Page<Chart>>;
   getChart(org: number, id: number): Promise<Chart>;

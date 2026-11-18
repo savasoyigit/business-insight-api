@@ -9,6 +9,15 @@ spring:
       minimum-idle: 1
 
 app:
+  insight:
+    execution:
+      max-rows: 5000
+      snapshot-rows: 500
+      query-timeout-seconds: 30
+      snapshot-retention: 3
+    scheduler:
+      # Tests drive DatasetRefreshScheduler#refreshDueDatasets directly.
+      enabled: false
   security:
     secrets-key: q83vEjRWeJq83vEjRWeJq83vEjRWeJq83vEjRWeJq80=
     jwt:

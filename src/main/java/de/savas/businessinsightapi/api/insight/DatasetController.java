@@ -35,13 +35,13 @@ public class DatasetController {
     @ResponseStatus(HttpStatus.CREATED)
     @PreAuthorize("hasAuthority('INSIGHT_DATASET_CREATE')")
     public DatasetResponse create(@RequestParam Long orgId, @Valid @RequestBody CreateDatasetRequest req) {
-        return DatasetResponse.from(service.create(orgId, req.name(), req.queryTemplateId(), req.defaultParams()));
+        return DatasetResponse.from(service.create(orgId, req.name(), req.queryTemplateId(), req.defaultParams(), req.refreshCron()));
     }
 
     @PutMapping("/{id}")
     @PreAuthorize("hasAuthority('INSIGHT_DATASET_UPDATE')")
     public DatasetResponse update(@RequestParam Long orgId, @PathVariable Long id, @Valid @RequestBody UpdateDatasetRequest req) {
-        return DatasetResponse.from(service.update(orgId, id, req.name(), req.queryTemplateId(), req.defaultParams()));
+        return DatasetResponse.from(service.update(orgId, id, req.name(), req.queryTemplateId(), req.defaultParams(), req.refreshCron()));
     }
 
     @DeleteMapping("/{id}")
@@ -63,5 +63,13 @@ public class DatasetController {
     public CreateSnapshotResponse createSnapshot(@RequestParam Long orgId, @PathVariable Long id, @RequestBody(required = false) CreateSnapshotRequest req) {
         var result = service.createSnapshot(orgId, id, req == null ? null : req.params());
         return CreateSnapshotResponse.from(result);
+    }
+
+    /** Asynchronous snapshot: 202 with a run id; poll GET /api/insight/query-execution/runs/{runId}. */
+    @PostMapping("/{id}/snapshot-jobs")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    @PreAuthorize("hasAuthority('INSIGHT_DATASET_CREATE')")
+    public QueryExecutionController.SubmittedRunResponse submitSnapshot(@RequestParam Long orgId, @PathVariable Long id, @RequestBody(required = false) CreateSnapshotRequest req) {
+        return QueryExecutionController.SubmittedRunResponse.from(service.submitSnapshot(orgId, id, req == null ? null : req.params()));
     }
 }

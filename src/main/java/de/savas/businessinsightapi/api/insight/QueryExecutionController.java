@@ -1,6 +1,7 @@
 package de.savas.businessinsightapi.api.insight;
 
 import de.savas.businessinsightapi.application.insight.QueryExecutionService;
+import de.savas.businessinsightapi.application.insight.QueryRunJobService;
 import de.savas.businessinsightapi.domain.insight.run.QueryRun;
 import jakarta.validation.constraints.NotNull;
 import org.springframework.data.domain.Page;
@@ -15,9 +16,41 @@ import java.util.Map;
 public class QueryExecutionController {
 
     private final QueryExecutionService service;
+    private final QueryRunJobService jobService;
 
-    public QueryExecutionController(QueryExecutionService service) {
+    public QueryExecutionController(QueryExecutionService service, QueryRunJobService jobService) {
         this.service = service;
+        this.jobService = jobService;
+    }
+
+    public record SubmittedRunResponse(Long queryRunId, String status, boolean coalesced) {
+        public static SubmittedRunResponse from(QueryRunJobService.SubmittedRun run) {
+            return new SubmittedRunResponse(run.queryRunId(), run.status(), run.coalesced());
+        }
+    }
+
+    public record RunDetailsResponse(
+            Long id,
+            String status,
+            String requestedBy,
+            Long queryTemplateId,
+            Long dataSourceId,
+            long durationMs,
+            Integer rowCount,
+            String queryHash,
+            String errorType,
+            String errorMessage,
+            Long snapshotId,
+            java.time.OffsetDateTime startedAt,
+            java.time.OffsetDateTime finishedAt
+    ) {
+        public static RunDetailsResponse from(QueryExecutionService.RunDetails details) {
+            QueryRun run = details.run();
+            return new RunDetailsResponse(run.getId(), run.getStatus().name(), run.getRequestedBy(), run.getQueryTemplateId(),
+                    run.getDataSourceId(), run.getDurationMs() == null ? 0L : run.getDurationMs(), run.getRowCount(),
+                    run.getQueryHash(), run.getErrorType(), run.getErrorMessage(), details.snapshotId(),
+                    run.getStartedAt(), run.getFinishedAt());
+        }
     }
 
     public record ExecuteRequest(
@@ -98,6 +131,23 @@ public class QueryExecutionController {
                                 result.queryHash(),
                                 result.errorType()
         );
+    }
+
+    /** Asynchronous execution: 202 with a run id; poll GET /runs/{id}. Identical in-flight submissions share a run. */
+    @PostMapping("/jobs")
+    @ResponseStatus(org.springframework.http.HttpStatus.ACCEPTED)
+    @PreAuthorize("hasAuthority('INSIGHT_QUERY_EXECUTE')")
+    public SubmittedRunResponse submit(@RequestParam Long orgId, @RequestBody ExecuteRequest req,
+                                       org.springframework.security.core.Authentication authentication) {
+        boolean takeSnapshot = req.snapshot() != null && req.snapshot();
+        Map<String, Object> params = req.params() == null ? Map.of() : req.params();
+        return SubmittedRunResponse.from(jobService.submit(orgId, req.queryTemplateId(), params, takeSnapshot, authentication.getName()));
+    }
+
+    @GetMapping("/runs/{id}")
+    @PreAuthorize("hasAuthority('INSIGHT_QUERY_EXECUTE')")
+    public RunDetailsResponse getRun(@RequestParam Long orgId, @PathVariable Long id) {
+        return RunDetailsResponse.from(service.getRun(orgId, id));
     }
 
         @GetMapping("/runs")

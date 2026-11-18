@@ -66,7 +66,7 @@ export function Login() {
           ))}
         </ol>
         <ul className="hero-facts">
-          <li><b>JWT + RBAC</b><span>24 fine-grained permissions</span></li>
+          <li><b>JWT + RBAC</b><span>25 fine-grained permissions</span></li>
           <li><b>Postgres · MSSQL</b><span>pluggable SQL dialects</span></li>
           <li><b>Audit trail</b><span>every role change logged</span></li>
         </ul>

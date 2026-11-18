@@ -1,5 +1,5 @@
 import type {
-  Api, AuditLog, Me, Organization, Chart, ConnectionTest, Dashboard, DataSource, Dataset, ExecuteResult, Json,
+  Api, AuditLog, Me, Organization, RunDetails, SubmittedRun, Chart, ConnectionTest, Dashboard, DataSource, Dataset, ExecuteResult, Json,
   Page, PageRequest, Permission, QueryRun, QueryTemplate, RenderedChart, Role, Snapshot, UserRoles,
   ValidateResult,
 } from './types';
@@ -104,6 +104,12 @@ export class HttpApi implements Api {
   executeQuery(org: number, queryTemplateId: number, params: Json, snapshot: boolean) {
     return this.req<ExecuteResult>('POST', this.org('/api/insight/query-execution/execute', org), { queryTemplateId, params, snapshot });
   }
+  submitQuery(org: number, queryTemplateId: number, params: Json, snapshot: boolean) {
+    return this.req<SubmittedRun>('POST', this.org('/api/insight/query-execution/jobs', org), { queryTemplateId, params, snapshot });
+  }
+  getRun(org: number, runId: number) {
+    return this.req<RunDetails>('GET', this.org(`/api/insight/query-execution/runs/${runId}`, org));
+  }
   async listRuns(org: number, p?: PageRequest) {
     return toPage<QueryRun>(await this.req('GET', this.org('/api/insight/query-execution/runs', org, pageQuery(p))));
   }
@@ -125,6 +131,10 @@ export class HttpApi implements Api {
   }
   createSnapshot(org: number, datasetId: number, params?: Json) {
     return this.req<ExecuteResult>('POST', this.org(`/api/insight/datasets/${datasetId}/snapshots`, org), params ? { params } : {});
+  }
+
+  submitSnapshot(org: number, datasetId: number, params?: Json) {
+    return this.req<SubmittedRun>('POST', this.org(`/api/insight/datasets/${datasetId}/snapshot-jobs`, org), params ? { params } : {});
   }
 
   async listCharts(org: number, p?: PageRequest) {
