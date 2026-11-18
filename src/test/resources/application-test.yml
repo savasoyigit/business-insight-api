@@ -1,0 +1,17 @@
+# Integration tests run against a real PostgreSQL (CI: service container; locally: e.g. docker compose).
+spring:
+  datasource:
+    url: ${TEST_DB_URL:jdbc:postgresql://localhost:5432/businessinsight_test}
+    username: ${TEST_DB_USER:app}
+    password: ${TEST_DB_PASSWORD:app}
+    hikari:
+      maximum-pool-size: 5
+      minimum-idle: 1
+
+app:
+  security:
+    jwt:
+      secret: integration-test-secret-that-is-long-enough-0123456789
+    hardening:
+      # Tests log in many times from the same address.
+      login-rate-limit-per-minute: 10000
