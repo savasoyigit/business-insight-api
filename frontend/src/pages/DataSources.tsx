@@ -29,7 +29,7 @@ export function DataSources() {
         eyebrow="Data" title="Data sources"
         actions={can('INSIGHT_DS_CREATE') && <button className="btn btn-primary" onClick={() => setEditing('new')}>+ New data source</button>}
       >
-        External databases queries are routed to. Passwords never live in the app DB — only a <span className="mono">secretRef</span>.
+        External databases queries are routed to. Passwords are stored encrypted (AES-256-GCM) or referenced from the server environment, and never sent back.
       </PageHeader>
 
       {list.loading && !list.data && <Spinner />}
@@ -59,7 +59,7 @@ export function DataSources() {
                 <dt>Host</dt><dd className="mono">{ds.host}:{ds.port}</dd>
                 <dt>Database</dt><dd className="mono">{ds.databaseName}</dd>
                 <dt>User</dt><dd className="mono">{ds.username}</dd>
-                <dt>Secret</dt><dd className="mono">{ds.secretRef}</dd>
+                <dt>Secret</dt><dd className="mono">{ds.secretType === 'ENCRYPTED' ? <span className="secret-enc">🔒 encrypted password</span> : ds.secretRef}</dd>
               </dl>
               <div className="card-foot">
                 <button className="btn btn-ghost btn-sm" onClick={() => test(ds.id)} disabled={t === 'pending'}>
@@ -94,11 +94,13 @@ export function DataSources() {
 function DataSourceForm({ initial, onClose, onSaved }: { initial: DataSource | null; onClose: () => void; onSaved: () => void }) {
   const { api, orgId } = useSession();
   const toast = useToast();
-  const [f, setF] = useState<DataSourceInput & { active: boolean }>({
+  const [f, setF] = useState<DataSourceInput & { active: boolean; secretRef: string; password: string }>({
     name: initial?.name ?? '', type: initial?.type ?? 'POSTGRES', host: initial?.host ?? 'localhost',
     port: initial?.port ?? 5432, databaseName: initial?.databaseName ?? '', username: initial?.username ?? '',
-    secretRef: initial?.secretRef ?? 'env:', options: initial?.options ?? null, active: initial?.active ?? true,
+    secretRef: initial?.secretRef ?? 'env:', password: '', options: initial?.options ?? null, active: initial?.active ?? true,
   });
+  const [secretMode, setSecretMode] = useState<'password' | 'env'>(initial?.secretType === 'ENV' ? 'env' : 'password');
+  const keepsEncrypted = initial?.secretType === 'ENCRYPTED';
   const [optionsText, setOptionsText] = useState(initial?.options ? JSON.stringify(initial.options, null, 2) : '{\n  "ssl": false\n}');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -109,7 +111,9 @@ function DataSourceForm({ initial, onClose, onSaved }: { initial: DataSource | n
     if (err) return setError(`Options: ${err}`);
     setBusy(true); setError(null);
     try {
-      const body = { ...f, options: (options as DataSourceInput['options']) ?? null };
+      const { secretRef, password, ...rest } = f;
+      const secret = secretMode === 'env' ? { secretRef } : password ? { password } : {};
+      const body = { ...rest, ...secret, options: (options as DataSourceInput['options']) ?? null };
       if (initial) await api.updateDataSource(orgId, initial.id, body);
       else await api.createDataSource(orgId, body);
       toast('ok', initial ? 'Data source updated' : 'Data source created');
@@ -136,9 +140,24 @@ function DataSourceForm({ initial, onClose, onSaved }: { initial: DataSource | n
         <Field label="Port"><input type="number" value={f.port} onChange={(e) => set('port', Number(e.target.value))} /></Field>
         <Field label="Database"><input value={f.databaseName} onChange={(e) => set('databaseName', e.target.value)} /></Field>
         <Field label="Username"><input value={f.username} onChange={(e) => set('username', e.target.value)} /></Field>
-        <Field label="Secret reference" hint={<>Resolved server-side, e.g. <span className="mono">env:ERP_REPORTING_PASSWORD</span></>}>
-          <input className="mono" value={f.secretRef} onChange={(e) => set('secretRef', e.target.value)} />
-        </Field>
+        <div className="span-2">
+          <div className="field">
+            <span className="field-label">Password</span>
+            <div className="seg seg-sm">
+              <button type="button" className={secretMode === 'password' ? 'on' : ''} onClick={() => setSecretMode('password')}>Store encrypted</button>
+              <button type="button" className={secretMode === 'env' ? 'on' : ''} onClick={() => setSecretMode('env')}>Environment variable</button>
+            </div>
+          </div>
+          {secretMode === 'password' ? (
+            <Field label="Database password" hint={keepsEncrypted ? 'Leave empty to keep the current password.' : 'Encrypted with AES-256-GCM on the server; never shown again.'}>
+              <input type="password" autoComplete="new-password" value={f.password} placeholder={keepsEncrypted ? '•••••••• (unchanged)' : ''} onChange={(e) => set('password', e.target.value)} />
+            </Field>
+          ) : (
+            <Field label="Secret reference" hint={<>Read from the API server's environment, e.g. <span className="mono">env:ERP_REPORTING_PASSWORD</span></>}>
+              <input className="mono" value={f.secretRef} onChange={(e) => set('secretRef', e.target.value)} />
+            </Field>
+          )}
+        </div>
         {initial && (
           <Field label="Status">
             <select value={String(f.active)} onChange={(e) => set('active', e.target.value === 'true')}>

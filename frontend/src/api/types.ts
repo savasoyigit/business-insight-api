@@ -26,12 +26,20 @@ export interface DataSource {
   port: number;
   databaseName: string;
   username: string;
-  secretRef: string;
+  /** env:VAR_NAME, or null when the password is stored encrypted. */
+  secretRef: string | null;
+  secretType: 'ENV' | 'ENCRYPTED';
   options: Json | null;
   active: boolean;
 }
 
-export type DataSourceInput = Omit<DataSource, 'id' | 'active'> & { active?: boolean };
+export type DataSourceInput = Omit<DataSource, 'id' | 'active' | 'secretRef' | 'secretType'> & {
+  active?: boolean;
+  /** env:VAR_NAME */
+  secretRef?: string;
+  /** Write-only; the server stores it encrypted and never returns it. */
+  password?: string;
+};
 
 export interface ConnectionTest {
   ok: boolean;

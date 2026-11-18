@@ -8,6 +8,9 @@ import de.savas.businessinsightapi.domain.security.Role;
 import de.savas.businessinsightapi.domain.security.RoleRepository;
 import de.savas.businessinsightapi.domain.user.User;
 import de.savas.businessinsightapi.domain.user.UserRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -19,14 +22,20 @@ import java.util.Optional;
 @Component
 public class RbacSeeder implements ApplicationRunner {
 
+    static final String DEFAULT_ADMIN_PASSWORD = "ChangeMe_DevOnly_123456!";
+    private static final Logger log = LoggerFactory.getLogger(RbacSeeder.class);
+
     private final PermissionRepository permissionRepo;
     private final RoleRepository roleRepo;
     private final UserRepository userRepo;
     private final PasswordEncoder encoder;
     private final OrganizationRepository organizationRepo;
+    private final boolean allowDefaultAdminPassword;
 
     public RbacSeeder(PermissionRepository permissionRepo, RoleRepository roleRepo,
-                      UserRepository userRepo, PasswordEncoder encoder, OrganizationRepository organizationRepo) {
+                      UserRepository userRepo, PasswordEncoder encoder, OrganizationRepository organizationRepo,
+                      @Value("${app.security.allow-default-admin-password:true}") boolean allowDefaultAdminPassword) {
+        this.allowDefaultAdminPassword = allowDefaultAdminPassword;
         this.permissionRepo = permissionRepo;
         this.roleRepo = roleRepo;
         this.userRepo = userRepo;
@@ -92,7 +101,7 @@ public class RbacSeeder implements ApplicationRunner {
 // 3️⃣ Admin user ensure
         String adminUsername = env("ADMIN_USERNAME", "admin");
         String adminEmail    = env("ADMIN_EMAIL", "admin@local.dev");
-        String adminPassword = env("ADMIN_PASSWORD", "ChangeMe_DevOnly_123456!");
+        String adminPassword = env("ADMIN_PASSWORD", DEFAULT_ADMIN_PASSWORD);
 
         Optional<User> existing = userRepo.findByUsername(adminUsername);
 
@@ -106,10 +115,21 @@ public class RbacSeeder implements ApplicationRunner {
             u.getRoles().add(admin);
             u.getOrganizationIds().add(defaultOrgId);
             userRepo.save(u);
-            System.out.println(">>> Admin created: username=" + adminUsername);
+            log.info("Admin created: username={}", adminUsername);
         } else {
             // varsa: kesinlikle insert yok
-            System.out.println(">>> Admin exists, skipping create: username=" + adminUsername);
+            log.info("Admin exists, skipping create: username={}", adminUsername);
+        }
+
+        // Catches both a fresh admin seeded with the default and an older admin whose password was never changed.
+        User adminUser = userRepo.findByUsername(adminUsername).orElseThrow();
+        if (encoder.matches(DEFAULT_ADMIN_PASSWORD, adminUser.getPasswordHash())) {
+            if (!allowDefaultAdminPassword) {
+                throw new IllegalStateException("Admin user '" + adminUsername + "' still uses the default password. "
+                        + "Set ADMIN_PASSWORD before the first start, or change the password, then restart.");
+            }
+            log.warn("Admin user '{}' uses the default development password. Never run like this in production "
+                    + "(the prod profile refuses to start).", adminUsername);
         }
     }
 

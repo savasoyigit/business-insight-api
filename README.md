@@ -118,12 +118,22 @@ Example:
 }
 ```
 
-Security notes:
+Passwords are never stored in plaintext and never returned by the API. There are two ways to provide one:
 
-- Passwords are not stored in plaintext in the app database.
-- `secretRef` currently supports `env:VAR_NAME`.
-- Example: `env:ERP_REPORTING_PASSWORD`.
-- **Multi-database support**: Postgres and MSSQL connectors with pluggable SQL dialect architecture.
+| Request field | Stored as | Notes |
+| --- | --- | --- |
+| `"password": "..."` | `enc:v1:<base64>` (AES-256-GCM) | Needs `APP_SECRETS_KEY` on the server. Write-only; responses show `"secretType": "ENCRYPTED"` and `"secretRef": null`. |
+| `"secretRef": "env:VAR_NAME"` | the reference itself | The password is read from the API server's environment at query time. |
+
+Send exactly one of them. On update, sending neither keeps the current secret. Clients cannot send `enc:` values directly.
+
+Generate the encryption key once and keep it safe; losing it means re-entering the encrypted passwords:
+
+```bash
+export APP_SECRETS_KEY=$(openssl rand -base64 32)
+```
+
+**Multi-database support**: Postgres and MSSQL connectors with pluggable SQL dialect architecture.
 
 **Supported Database Types:**
 - `POSTGRES` - PostgreSQL databases
@@ -150,12 +160,21 @@ Response:
 
 Parameterized, guarded SQL definition bound to a datasource.
 
-Guardrails:
+Guardrails, in layers:
 
-- SELECT-only (dialect-aware validation)
-- single statement only
-- `;` rejected
-- DDL/DML keywords rejected
+1. **Keyword checks** (dialect-aware): must start with `SELECT`; `;`, DDL/DML keywords and dynamic identifiers
+   (`${...}`, `{{...}}`) are rejected.
+2. **Parser** ([JSqlParser](https://github.com/JSQLParser/JSqlParser), `SqlStatementGuard`): the text must parse as exactly one
+   SELECT. `SELECT ... INTO` (which creates a table), locking clauses (`FOR UPDATE/SHARE`) and data-modifying `WITH`
+   items are rejected. SQL Server `[bracketed]` identifiers are understood for MSSQL sources.
+3. **Database**: every query runs on its own connection in a read-only transaction that is always rolled back.
+   - **PostgreSQL** enforces it (`SET TRANSACTION READ ONLY`): even a SELECT that writes, such as `select nextval(...)`, fails.
+     A `statement_timeout` matching the query timeout is set too.
+   - **SQL Server** has no read-only transaction mode, so nothing is ever committed (rollback) and `LOCK_TIMEOUT` is set.
+     Use a login with read-only rights (for example `db_datareader`) for real protection.
+
+The connection test runs through the same read-only setup. Further limits:
+
 - named parameters supported via `:paramName`
 - unexpected params rejected
 - default row cap: `5000` (applied via `LIMIT` or `TOP` depending on database type)
@@ -406,8 +425,17 @@ export JWT_SECRET=your_long_random_secret_here
 export ERP_REPORTING_PASSWORD=your_readonly_password
 ```
 
-Optional: `CORS_ALLOWED_ORIGINS` (comma-separated, default `http://localhost:5173`) lists the browser origins
-allowed to call the API directly, for example where the frontend is hosted.
+Optional:
+
+| Variable | Purpose |
+| --- | --- |
+| `APP_SECRETS_KEY` | Base64 32-byte key (`openssl rand -base64 32`) that enables encrypted datasource passwords |
+| `ADMIN_USERNAME`, `ADMIN_EMAIL`, `ADMIN_PASSWORD` | Seeded admin account. Set `ADMIN_PASSWORD` before the first start. |
+| `CORS_ALLOWED_ORIGINS` | Comma-separated browser origins allowed to call the API directly (default `http://localhost:5173`) |
+| `SPRING_PROFILES_ACTIVE=prod` | Production profile: refuses to start while the admin still has the default password |
+
+Without `ADMIN_PASSWORD` the admin gets a development default and a warning is logged on every start.
+With the `prod` profile the application refuses to start in that state.
 
 ### 3. Run the application
 
@@ -473,7 +501,8 @@ Recommended execution order in Postman:
 
 Integration tests boot the full application (security filter chain included) against a real PostgreSQL database.
 They cover authentication and status codes, tenant isolation, RBAC, membership administration and auditing,
-JSON fields, SQL guardrails, and the whole pipeline from data source to rendered chart and dashboard.
+JSON fields, SQL guardrails, encrypted passwords, read-only enforcement in the database, and the whole pipeline
+from data source to rendered chart and dashboard. Unit tests cover the SQL parser guard and the secret cipher.
 
 ```bash
 # a database for tests (any PostgreSQL works; defaults shown)
