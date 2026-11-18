@@ -39,6 +39,9 @@ npm run build:demo     # dist/ only offers the demo sandbox
 
 `dist/` uses relative paths and hash routing, so it can go straight to GitHub Pages, Netlify, Vercel or any static host.
 
+The `Deploy demo to GitHub Pages` workflow (`.github/workflows/deploy-demo.yml`) does this automatically on every push to
+`master` that touches `frontend/`, and can also be run by hand from the Actions tab.
+
 ## Structure
 
 ```

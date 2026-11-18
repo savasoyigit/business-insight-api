@@ -8,6 +8,8 @@ It supports this flow:
 
 ## Frontend: Insight Studio
 
+**Live demo:** https://savasoyigit.github.io/business-insight-api/ (runs fully in the browser, no backend needed)
+
 The repository ships a React + TypeScript web UI in [`frontend/`](frontend/README.md) that covers the whole flow,
 query-run history and RBAC administration. It also has a **demo sandbox** that runs fully in the browser,
 so it can be hosted as a static showcase without the backend.
