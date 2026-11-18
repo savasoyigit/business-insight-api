@@ -52,7 +52,8 @@ class BiFlowTest extends IntegrationTestSupport {
                 "name", "guard", "type", "POSTGRES", "host", "h", "port", 5432, "databaseName", "d",
                 "username", "u", "secretRef", "env:X")).body().get("id").asLong();
 
-        for (String sql : List.of("delete from it_sales", "select 1; drop table it_sales", "select * from ${table}")) {
+        for (String sql : List.of("delete from it_sales", "select 1; drop table it_sales", "select * from ${table}",
+                "select * into it_copy from it_sales", "select * from it_sales for update")) {
             var r = post(q("/api/insight/query-templates"), token, Map.of("dataSourceId", dsId, "name", unique("bad"), "sqlText", sql));
             assertThat(r.status()).as(sql).isEqualTo(400);
         }
@@ -67,11 +68,7 @@ class BiFlowTest extends IntegrationTestSupport {
         jdbc.update("insert into it_sales values ('2026-01-05','Berlin',10),('2026-01-20','Berlin',5),"
                 + "('2026-01-07','Munich',7),('2026-02-02','Berlin',3)");
 
-        var ds = post(q("/api/insight/data-sources"), token, Map.of(
-                "name", "it-db", "type", "POSTGRES",
-                "host", env("TEST_DB_HOST", "localhost"), "port", Integer.parseInt(env("TEST_DB_PORT", "5432")),
-                "databaseName", env("TEST_DB_NAME", "businessinsight_test"), "username", env("TEST_DB_USER", "app"),
-                "secretRef", "env:TEST_DB_PASSWORD"));
+        var ds = post(q("/api/insight/data-sources"), token, liveDataSource("it-db"));
         assertThat(ds.status()).isEqualTo(200);
         long dsId = ds.body().get("id").asLong();
 
@@ -120,6 +117,76 @@ class BiFlowTest extends IntegrationTestSupport {
 
         var runs = get(q("/api/insight/query-execution/runs?size=10"), token);
         assertThat(runs.body().get("totalElements").asInt()).isGreaterThanOrEqualTo(2);
+    }
+
+    /** A SELECT that writes (nextval) passes the SQL checks; the read-only transaction must still stop it. */
+    @Test
+    void databaseRefusesWritesThatPassTheSqlChecks() throws Exception {
+        assumeTrue(System.getenv("TEST_DB_PASSWORD") != null, "TEST_DB_PASSWORD not set; skipping live execution test");
+        jdbc.execute("create sequence if not exists it_seq");
+        long before = jdbc.queryForObject("select last_value from it_seq", Long.class);
+
+        long dsId = post(q("/api/insight/data-sources"), token, liveDataSource("readonly-check")).body().get("id").asLong();
+        var qt = post(q("/api/insight/query-templates"), token, Map.of(
+                "dataSourceId", dsId, "name", "sneaky write", "sqlText", "select nextval('it_seq') as n"));
+        assertThat(qt.status()).as("passes the SQL checks").isEqualTo(200);
+
+        var exec = post(q("/api/insight/query-execution/execute"), token, Map.of("queryTemplateId", qt.body().get("id").asLong(), "params", Map.of()));
+        assertThat(exec.status()).isEqualTo(400);
+        assertThat(exec.body().get("message").asString()).contains("read-only transaction");
+        assertThat(jdbc.queryForObject("select last_value from it_seq", Long.class)).isEqualTo(before);
+    }
+
+    @Test
+    void passwordsAreStoredEncryptedAndNeverReturned() throws Exception {
+        String password = env("TEST_DB_PASSWORD", "app");
+        Map<String, Object> body = new java.util.HashMap<>(liveDataSource("encrypted"));
+        body.remove("secretRef");
+        body.put("password", password);
+
+        var created = post(q("/api/insight/data-sources"), token, body);
+        assertThat(created.status()).as(created.text()).isEqualTo(200);
+        assertThat(created.body().get("secretType").asString()).isEqualTo("ENCRYPTED");
+        assertThat(created.body().get("secretRef").isNull()).isTrue();
+        long id = created.body().get("id").asLong();
+
+        String stored = jdbc.queryForObject("select secret_ref from data_source where id = ?", String.class, id);
+        assertThat(stored).startsWith("enc:v1:").doesNotContain(password);
+
+        String listed = get(q("/api/insight/data-sources?size=100"), token).text();
+        assertThat(listed).doesNotContain(stored).doesNotContain("enc:v1:");
+
+        if (System.getenv("TEST_DB_PASSWORD") != null) {
+            var test = post(q("/api/insight/data-sources/" + id + "/test"), token, null);
+            assertThat(test.body().get("ok").asBoolean()).as("connects with the decrypted password: " + test.text()).isTrue();
+        }
+
+        // switching back to an environment reference
+        var updated = put(q("/api/insight/data-sources/" + id), token, Map.of("secretRef", "env:TEST_DB_PASSWORD"));
+        assertThat(updated.body().get("secretType").asString()).isEqualTo("ENV");
+    }
+
+    @Test
+    void secretInputIsValidated() throws Exception {
+        Map<String, Object> both = new java.util.HashMap<>(liveDataSource("both"));
+        both.put("password", "x");
+        assertThat(post(q("/api/insight/data-sources"), token, both).status()).isEqualTo(400);
+
+        Map<String, Object> none = new java.util.HashMap<>(liveDataSource("none"));
+        none.remove("secretRef");
+        assertThat(post(q("/api/insight/data-sources"), token, none).status()).isEqualTo(400);
+
+        Map<String, Object> injected = new java.util.HashMap<>(liveDataSource("injected"));
+        injected.put("secretRef", "enc:v1:AAAA");
+        assertThat(post(q("/api/insight/data-sources"), token, injected).status()).isEqualTo(400);
+    }
+
+    private Map<String, Object> liveDataSource(String name) {
+        return Map.of(
+                "name", name, "type", "POSTGRES",
+                "host", env("TEST_DB_HOST", "localhost"), "port", Integer.parseInt(env("TEST_DB_PORT", "5432")),
+                "databaseName", env("TEST_DB_NAME", "businessinsight_test"), "username", env("TEST_DB_USER", "app"),
+                "secretRef", "env:TEST_DB_PASSWORD");
     }
 
     private static String env(String key, String fallback) {

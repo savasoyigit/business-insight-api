@@ -39,6 +39,9 @@ app:
       snapshot-rows: 500
       query-timeout-seconds: 30
   security:
+    # Base64-encoded 32-byte key for encrypting datasource passwords (AES-256-GCM). Empty disables encrypted passwords.
+    # Generate one with: openssl rand -base64 32
+    secrets-key: ${APP_SECRETS_KEY:}
     jwt:
       secret: ${JWT_SECRET}
       issuer: business-insight-api

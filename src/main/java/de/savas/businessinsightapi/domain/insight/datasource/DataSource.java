@@ -38,7 +38,7 @@ public class DataSource {
     @Column(nullable = false, length = 255)
     private String username;
 
-    @Column(name = "secret_ref", nullable = false, length = 255)
+    @Column(name = "secret_ref", nullable = false, length = 1024)
     private String secretRef;
 
     @JdbcTypeCode(SqlTypes.JSON)
