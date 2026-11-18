@@ -23,7 +23,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.jdbc.core.ColumnMapRowMapper;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.security.core.Authentication;
@@ -123,11 +122,10 @@ public class QueryExecutionService {
         Instant start = Instant.now();
         try {
             String sql = sqlValidator.applyLimitIfMissing(context.queryTemplate().getSqlText(), properties.maxRows(), context.dataSource().getType());
-            JdbcTemplate jdbcTemplate = jdbcConnectionProvider.templateFor(context.dataSource());
-            NamedParameterJdbcTemplate namedJdbcTemplate = new NamedParameterJdbcTemplate(jdbcTemplate);
             MapSqlParameterSource parameterSource = buildSqlParameters(context.queryTemplate(), validation.allowedParams(), params);
 
-            List<Map<String, Object>> rows = namedJdbcTemplate.query(sql, parameterSource, new ColumnMapRowMapper());
+            List<Map<String, Object>> rows = jdbcConnectionProvider.readOnly(context.dataSource(), jdbcTemplate ->
+                    new NamedParameterJdbcTemplate(jdbcTemplate).query(sql, parameterSource, new ColumnMapRowMapper()));
 
             long durationMs = Duration.between(start, Instant.now()).toMillis();
             run.markSuccess(rows.size(), durationMs);

@@ -43,6 +43,7 @@ public class DataSourceController {
                 req.databaseName(),
                 req.username(),
                 req.secretRef(),
+                req.password(),
                 req.options()
         ));
     }
@@ -60,6 +61,7 @@ public class DataSourceController {
                 req.databaseName(),
                 req.username(),
                 req.secretRef(),
+                req.password(),
                 req.options(),
                 req.active()
         ));

@@ -1,0 +1,6 @@
+# Production profile: SPRING_PROFILES_ACTIVE=prod
+app:
+  security:
+    # Refuse to start while the seeded admin still has the default development password.
+    allow-default-admin-password: false
+    # Encrypted datasource passwords need APP_SECRETS_KEY (openssl rand -base64 32).

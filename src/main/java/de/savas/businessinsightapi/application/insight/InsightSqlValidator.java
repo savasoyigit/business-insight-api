@@ -16,9 +16,11 @@ public class InsightSqlValidator {
     private static final Pattern DYNAMIC_IDENTIFIER_PATTERN = Pattern.compile("(\\$\\{[^}]+}|\\{\\{[^}]+}})");
     
     private final SqlDialectFactory dialectFactory;
+    private final SqlStatementGuard statementGuard;
 
-    public InsightSqlValidator(SqlDialectFactory dialectFactory) {
+    public InsightSqlValidator(SqlDialectFactory dialectFactory, SqlStatementGuard statementGuard) {
         this.dialectFactory = dialectFactory;
+        this.statementGuard = statementGuard;
     }
 
     public ValidationResult validateSql(String sqlText, DataSourceType dataSourceType) {
@@ -36,6 +38,11 @@ public class InsightSqlValidator {
             
             if (!dialectValidation.valid()) {
                 errors.add(dialectValidation.errorMessage());
+            }
+
+            // Only parse what already passed the cheap checks, so error messages stay specific.
+            if (errors.isEmpty()) {
+                statementGuard.check(sqlText, dataSourceType).ifPresent(errors::add);
             }
         }
 

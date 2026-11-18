@@ -11,7 +11,7 @@ import type {
 import { ApiError } from './types';
 import { aggregate } from '../lib/render';
 
-const STORAGE_KEY = 'insight-studio.demo.v2';
+const STORAGE_KEY = 'insight-studio.demo.v3';
 export const DEMO_ORG = 1;
 
 export const ALL_PERMISSIONS: [string, string][] = [
@@ -177,8 +177,8 @@ function seedState(): DemoState {
   };
 
   s.dataSources.push(
-    { org, id: 1, name: 'Reporting Postgres', type: 'POSTGRES', host: 'reporting.db.internal', port: 5432, databaseName: 'erp_reporting', username: 'readonly_user', secretRef: 'env:ERP_REPORTING_PASSWORD', options: { ssl: true }, active: true },
-    { org, id: 2, name: 'Legacy ERP', type: 'MSSQL', host: 'erp-legacy.corp', port: 1433, databaseName: 'ERP_PROD', username: 'bi_reader', secretRef: 'env:ERP_LEGACY_PASSWORD', options: { encrypt: true }, active: true },
+    { org, id: 1, name: 'Reporting Postgres', type: 'POSTGRES', host: 'reporting.db.internal', port: 5432, databaseName: 'erp_reporting', username: 'readonly_user', secretRef: null, secretType: 'ENCRYPTED', options: { ssl: true }, active: true },
+    { org, id: 2, name: 'Legacy ERP', type: 'MSSQL', host: 'erp-legacy.corp', port: 1433, databaseName: 'ERP_PROD', username: 'bi_reader', secretRef: 'env:ERP_LEGACY_PASSWORD', secretType: 'ENV', options: { encrypt: true }, active: true },
   );
 
   s.templates.push(
@@ -256,6 +256,9 @@ export function guardSql(sql: string): string[] {
   if (trimmed.includes(';')) errors.push("';' is not allowed (single statement only)");
   if (FORBIDDEN.test(trimmed)) errors.push('DDL/DML keywords are not allowed');
   if (/\$\{|\{\{/.test(trimmed)) errors.push('Dynamic identifier templates are not allowed');
+  // Structural checks done server-side by SqlStatementGuard (JSqlParser).
+  if (!errors.length && /^select\b[\s\S]*\binto\b/i.test(trimmed) && !/\binsert\s+into\b/i.test(trimmed)) errors.push('SELECT ... INTO is not allowed');
+  if (!errors.length && /\bfor\s+(update|share|no\s+key\s+update|key\s+share)\b/i.test(trimmed)) errors.push('Locking clauses (FOR UPDATE/SHARE) are not allowed');
   return errors;
 }
 
@@ -381,7 +384,8 @@ export class DemoApi implements Api {
   }
   async createDataSource(org: number, body: DataSourceInput) {
     await this.guardOrg(org, 'INSIGHT_DS_CREATE');
-    const ds = { ...body, org, id: this.id(), active: true, options: body.options ?? {} };
+    const { password, secretRef, ...rest } = body;
+    const ds = { ...rest, ...this.secret(secretRef, password, true)!, org, id: this.id(), active: true, options: body.options ?? {} };
     this.s.dataSources.push(ds);
     this.save();
     return this.strip(ds);
@@ -389,9 +393,22 @@ export class DemoApi implements Api {
   async updateDataSource(org: number, id: number, body: Partial<DataSourceInput>) {
     await this.guardOrg(org, 'INSIGHT_DS_UPDATE');
     const ds = this.find(this.s.dataSources, org, id, 'DataSource');
-    Object.assign(ds, Object.fromEntries(Object.entries(body).filter(([, v]) => v !== undefined)));
+    const { password, secretRef, ...rest } = body;
+    Object.assign(ds, Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined)), this.secret(secretRef, password, false) ?? {});
     this.save();
     return this.strip(ds);
+  }
+
+  /** Mirrors DataSourceService: either env:VAR or a password (kept only as "encrypted"). */
+  private secret(secretRef: string | undefined, password: string | undefined, required: boolean): Pick<DataSource, 'secretRef' | 'secretType'> | null {
+    if (secretRef && password) throw new ApiError(400, 'Provide either secretRef or password, not both');
+    if (password) return { secretRef: null, secretType: 'ENCRYPTED' };
+    if (secretRef) {
+      if (!/^env:.+/.test(secretRef.trim())) throw new ApiError(400, 'secretRef must look like env:VAR_NAME; send a password to store it encrypted');
+      return { secretRef: secretRef.trim(), secretType: 'ENV' };
+    }
+    if (required) throw new ApiError(400, 'secretRef or password is required');
+    return null;
   }
   async testDataSource(org: number, id: number) {
     await this.guardOrg(org, 'INSIGHT_DS_READ');

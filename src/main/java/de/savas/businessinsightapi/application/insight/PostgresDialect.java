@@ -45,6 +45,15 @@ public class PostgresDialect implements SqlDialect {
         return ValidationResult.ok();
     }
     
+    /** The server enforces both: writes fail with "cannot execute ... in a read-only transaction". */
+    @Override
+    public java.util.List<String> readOnlySessionStatements(int timeoutSeconds) {
+        return java.util.List.of(
+                "SET TRANSACTION READ ONLY",
+                "SET LOCAL statement_timeout = " + Math.max(1, timeoutSeconds) * 1000L
+        );
+    }
+
     @Override
     public String getDriverClassName() {
         return "org.postgresql.Driver";

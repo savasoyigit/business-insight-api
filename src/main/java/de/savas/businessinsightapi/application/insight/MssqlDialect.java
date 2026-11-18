@@ -53,6 +53,16 @@ public class MssqlDialect implements SqlDialect {
         return ValidationResult.ok();
     }
     
+    /**
+     * SQL Server has no read-only transaction mode; Connection#setReadOnly is only a hint there.
+     * Writes are still never committed (the transaction is always rolled back), and the JDBC query timeout applies.
+     * Use a login with read-only permissions (e.g. db_datareader) for real protection.
+     */
+    @Override
+    public java.util.List<String> readOnlySessionStatements(int timeoutSeconds) {
+        return java.util.List.of("SET LOCK_TIMEOUT " + Math.max(1, timeoutSeconds) * 1000L);
+    }
+
     @Override
     public String getDriverClassName() {
         return "com.microsoft.sqlserver.jdbc.SQLServerDriver";

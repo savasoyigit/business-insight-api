@@ -10,6 +10,7 @@ spring:
 
 app:
   security:
+    secrets-key: q83vEjRWeJq83vEjRWeJq83vEjRWeJq83vEjRWeJq80=
     jwt:
       secret: integration-test-secret-that-is-long-enough-0123456789
     hardening:

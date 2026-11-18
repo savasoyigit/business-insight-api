@@ -22,6 +22,14 @@ public interface SqlDialect {
      */
     String buildJdbcUrl(String host, int port, String databaseName);
     
+    /**
+     * Statements run at the start of every query transaction to make it read-only and bounded.
+     * They run right after the transaction begins, before the template's SQL.
+     */
+    default java.util.List<String> readOnlySessionStatements(int timeoutSeconds) {
+        return java.util.List.of();
+    }
+
     record ValidationResult(boolean valid, String errorMessage) {
         public static ValidationResult ok() {
             return new ValidationResult(true, null);
