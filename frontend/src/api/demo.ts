@@ -4,14 +4,14 @@
  * Mirrors the real guardrails: SELECT-only validation, named params, RBAC permissions, org scoping.
  */
 import type {
-  Api, AuditLog, Chart, ChartInput, Dashboard, DashboardInput, DataSource, DataSourceInput, Dataset,
+  Api, AuditLog, Me, Organization, Chart, ChartInput, Dashboard, DashboardInput, DataSource, DataSourceInput, Dataset,
   DatasetInput, ExecuteResult, Json, Page, PageRequest, Permission, QueryRun, QueryTemplate,
   QueryTemplateInput, Role, Snapshot, UserRoles, ValidateResult,
 } from './types';
 import { ApiError } from './types';
 import { aggregate } from '../lib/render';
 
-const STORAGE_KEY = 'insight-studio.demo.v1';
+const STORAGE_KEY = 'insight-studio.demo.v2';
 export const DEMO_ORG = 1;
 
 export const ALL_PERMISSIONS: [string, string][] = [
@@ -28,6 +28,7 @@ export const ALL_PERMISSIONS: [string, string][] = [
   ['INSIGHT_DASHBOARD_UPDATE', 'Update dashboards'], ['INSIGHT_DASHBOARD_DELETE', 'Delete dashboards'],
   ['RBAC_ROLE_MANAGE', 'Manage roles'], ['RBAC_PERMISSION_MANAGE', 'Manage permissions'],
   ['RBAC_USER_ROLE_ASSIGN', 'Assign roles to users'],
+  ['RBAC_ORG_MANAGE', 'Manage organizations and memberships'],
 ];
 
 const READ_PERMS = ALL_PERMISSIONS.map(([c]) => c).filter((c) => c.endsWith('_READ'));
@@ -55,6 +56,7 @@ interface DemoState {
   dashboards: (Dashboard & { org: number })[];
   roles: Role[];
   users: UserRoles[];
+  organizations: Organization[];
   audit: AuditLog[];
 }
 
@@ -160,9 +162,13 @@ function seedState(): DemoState {
       { id: 3, name: 'VIEWER', description: 'Read-only access to BI assets', permissionCodes: [...READ_PERMS].sort() },
     ],
     users: [
-      { id: 1, username: 'admin', email: 'admin@local.dev', roleNames: ['ADMIN'] },
-      { id: 2, username: 'analyst', email: 'analyst@local.dev', roleNames: ['ANALYST'] },
-      { id: 3, username: 'viewer', email: 'viewer@local.dev', roleNames: ['VIEWER'] },
+      { id: 1, username: 'admin', email: 'admin@local.dev', roleNames: ['ADMIN'], organizationIds: [1, 2] },
+      { id: 2, username: 'analyst', email: 'analyst@local.dev', roleNames: ['ANALYST'], organizationIds: [1] },
+      { id: 3, username: 'viewer', email: 'viewer@local.dev', roleNames: ['VIEWER'], organizationIds: [1] },
+    ],
+    organizations: [
+      { id: 1, name: 'Ember & Bean Roasters', createdAt: iso(60 * 24 * 30) },
+      { id: 2, name: 'Franchise pilot', createdAt: iso(60 * 24 * 3) },
     ],
     audit: [
       { id: 2, actorUsername: 'admin', action: 'USER_ROLES_REPLACED', targetType: 'USER', targetId: '3', correlationId: 'c0ffee-02', details: { roleNames: ['VIEWER'] }, createdAt: iso(60 * 26) },
@@ -261,10 +267,10 @@ export function detectParams(sql: string): string[] {
 
 // ---------- the API ----------
 
-function fakeJwt(username: string, perms: string[]): string {
+function fakeJwt(username: string, perms: string[], orgs: number[]): string {
   const b64 = (o: object) => btoa(JSON.stringify(o)).replace(/=+$/, '').replace(/\+/g, '-').replace(/\//g, '_');
   const now = Math.floor(Date.now() / 1000);
-  return `${b64({ alg: 'none', typ: 'JWT' })}.${b64({ sub: username, iss: 'demo', perms, iat: now, exp: now + 3600 * 8 })}.demo`;
+  return `${b64({ alg: 'none', typ: 'JWT' })}.${b64({ sub: username, iss: 'demo', perms, orgs, iat: now, exp: now + 3600 * 8 })}.demo`;
 }
 
 const delay = (ms = 180 + Math.random() * 220) => new Promise((r) => setTimeout(r, ms));
@@ -306,6 +312,16 @@ export class DemoApi implements Api {
     if (!this.perms().has(perm)) throw new ApiError(403, 'You do not have permission for this action.');
   }
 
+  /** Mirrors OrganizationAccessInterceptor: org-scoped calls require membership. */
+  private async guardOrg(org: number, perm: string) {
+    await this.guard(perm);
+    if (!this.orgIds().includes(org)) throw new ApiError(403, 'Access denied');
+  }
+
+  private orgIds(): number[] {
+    return this.s.users.find((x) => x.username === this.user)?.organizationIds ?? [];
+  }
+
   private id() { return ++this.s.seq; }
 
   private page<T>(items: T[], p?: PageRequest): Page<T> {
@@ -343,37 +359,42 @@ export class DemoApi implements Api {
     const u = this.s.users.find((x) => x.username === username.trim().toLowerCase());
     if (!u) throw new ApiError(401, 'Unknown demo user. Try admin, analyst or viewer.');
     this.user = u.username;
-    return fakeJwt(u.username, [...this.perms()]);
+    return fakeJwt(u.username, [...this.perms()], u.organizationIds);
   }
   async register(email: string, username: string, _password: string) {
     await delay();
     if (this.s.users.some((u) => u.email === email)) throw new ApiError(400, 'Email already registered');
-    this.s.users.push({ id: this.id(), username, email, roleNames: ['VIEWER'] });
+    this.s.users.push({ id: this.id(), username, email, roleNames: ['VIEWER'], organizationIds: [] });
     this.save();
   }
   async health() { return true; }
+  async me(): Promise<Me> {
+    await delay(80);
+    const ids = this.orgIds();
+    return { username: this.user, permissions: [...this.perms()].sort(), organizations: this.s.organizations.filter((o) => ids.includes(o.id)) };
+  }
 
   // ----- data sources -----
   async listDataSources(org: number, p?: PageRequest) {
-    await this.guard('INSIGHT_DS_READ');
+    await this.guardOrg(org, 'INSIGHT_DS_READ');
     return this.page(this.s.dataSources.filter((x) => x.org === org), p);
   }
   async createDataSource(org: number, body: DataSourceInput) {
-    await this.guard('INSIGHT_DS_CREATE');
+    await this.guardOrg(org, 'INSIGHT_DS_CREATE');
     const ds = { ...body, org, id: this.id(), active: true, options: body.options ?? {} };
     this.s.dataSources.push(ds);
     this.save();
     return this.strip(ds);
   }
   async updateDataSource(org: number, id: number, body: Partial<DataSourceInput>) {
-    await this.guard('INSIGHT_DS_UPDATE');
+    await this.guardOrg(org, 'INSIGHT_DS_UPDATE');
     const ds = this.find(this.s.dataSources, org, id, 'DataSource');
     Object.assign(ds, Object.fromEntries(Object.entries(body).filter(([, v]) => v !== undefined)));
     this.save();
     return this.strip(ds);
   }
   async testDataSource(org: number, id: number) {
-    await this.guard('INSIGHT_DS_READ');
+    await this.guardOrg(org, 'INSIGHT_DS_READ');
     const ds = this.find(this.s.dataSources, org, id, 'DataSource');
     await delay(400);
     const ok = ds.active && !ds.host.includes('invalid');
@@ -382,11 +403,11 @@ export class DemoApi implements Api {
 
   // ----- query templates -----
   async listQueryTemplates(org: number, p?: PageRequest) {
-    await this.guard('INSIGHT_QT_READ');
+    await this.guardOrg(org, 'INSIGHT_QT_READ');
     return this.page(this.s.templates.filter((x) => x.org === org), p);
   }
   async createQueryTemplate(org: number, body: QueryTemplateInput) {
-    await this.guard('INSIGHT_QT_CREATE');
+    await this.guardOrg(org, 'INSIGHT_QT_CREATE');
     this.find(this.s.dataSources, org, body.dataSourceId, 'DataSource');
     const errors = guardSql(body.sqlText);
     if (errors.length) throw new ApiError(400, errors.join(', '));
@@ -396,7 +417,7 @@ export class DemoApi implements Api {
     return this.strip(qt);
   }
   async updateQueryTemplate(org: number, id: number, body: Partial<QueryTemplateInput> & { active?: boolean }) {
-    await this.guard('INSIGHT_QT_UPDATE');
+    await this.guardOrg(org, 'INSIGHT_QT_UPDATE');
     const qt = this.find(this.s.templates, org, id, 'QueryTemplate');
     if (body.sqlText) {
       const errors = guardSql(body.sqlText);
@@ -422,7 +443,7 @@ export class DemoApi implements Api {
   }
 
   async validateQuery(org: number, qtId: number, params: Json) {
-    await this.guard('INSIGHT_QUERY_EXECUTE');
+    await this.guardOrg(org, 'INSIGHT_QUERY_EXECUTE');
     return this.validateInternal(org, qtId, params);
   }
 
@@ -445,22 +466,22 @@ export class DemoApi implements Api {
   }
 
   async executeQuery(org: number, qtId: number, params: Json, snapshot: boolean) {
-    await this.guard('INSIGHT_QUERY_EXECUTE');
+    await this.guardOrg(org, 'INSIGHT_QUERY_EXECUTE');
     await delay(300);
     return this.run(org, qtId, params, snapshot, null);
   }
   async listRuns(org: number, p?: PageRequest) {
-    await this.guard('INSIGHT_QUERY_EXECUTE');
+    await this.guardOrg(org, 'INSIGHT_QUERY_EXECUTE');
     return this.page(this.s.runs.filter((x) => x.org === org), p);
   }
 
   // ----- datasets -----
   async listDatasets(org: number, p?: PageRequest) {
-    await this.guard('INSIGHT_DATASET_READ');
+    await this.guardOrg(org, 'INSIGHT_DATASET_READ');
     return this.page(this.s.datasets.filter((x) => x.org === org), p);
   }
   async createDataset(org: number, body: DatasetInput) {
-    await this.guard('INSIGHT_DATASET_CREATE');
+    await this.guardOrg(org, 'INSIGHT_DATASET_CREATE');
     this.find(this.s.templates, org, body.queryTemplateId, 'QueryTemplate');
     const d = { org, id: this.id(), name: body.name, queryTemplateId: body.queryTemplateId, defaultParams: body.defaultParams ?? {}, createdBy: this.user, createdAt: new Date().toISOString() };
     this.s.datasets.push(d);
@@ -468,26 +489,26 @@ export class DemoApi implements Api {
     return this.strip(d);
   }
   async updateDataset(org: number, id: number, body: Partial<DatasetInput>) {
-    await this.guard('INSIGHT_DATASET_UPDATE');
+    await this.guardOrg(org, 'INSIGHT_DATASET_UPDATE');
     const d = this.find(this.s.datasets, org, id, 'Dataset');
     Object.assign(d, Object.fromEntries(Object.entries(body).filter(([, v]) => v !== undefined)));
     this.save();
     return this.strip(d);
   }
   async deleteDataset(org: number, id: number) {
-    await this.guard('INSIGHT_DATASET_DELETE');
+    await this.guardOrg(org, 'INSIGHT_DATASET_DELETE');
     this.find(this.s.datasets, org, id, 'Dataset');
     if (this.s.charts.some((c) => c.datasetId === id && c.org === org)) throw new ApiError(400, 'Dataset is used by charts');
     this.s.datasets = this.s.datasets.filter((x) => !(x.id === id && x.org === org));
     this.save();
   }
   async listSnapshots(org: number, datasetId: number, p?: PageRequest) {
-    await this.guard('INSIGHT_DATASET_READ');
+    await this.guardOrg(org, 'INSIGHT_DATASET_READ');
     this.find(this.s.datasets, org, datasetId, 'Dataset');
     return this.page(this.s.snapshots.filter((x) => x.org === org && x.datasetId === datasetId), p);
   }
   async createSnapshot(org: number, datasetId: number, params?: Json) {
-    await this.guard('INSIGHT_DATASET_CREATE');
+    await this.guardOrg(org, 'INSIGHT_DATASET_CREATE');
     const d = this.find(this.s.datasets, org, datasetId, 'Dataset');
     await delay(300);
     return this.run(org, d.queryTemplateId, { ...(d.defaultParams ?? {}), ...(params ?? {}) }, true, datasetId);
@@ -495,15 +516,15 @@ export class DemoApi implements Api {
 
   // ----- charts -----
   async listCharts(org: number, p?: PageRequest) {
-    await this.guard('INSIGHT_CHART_READ');
+    await this.guardOrg(org, 'INSIGHT_CHART_READ');
     return this.page(this.s.charts.filter((x) => x.org === org), p);
   }
   async getChart(org: number, id: number) {
-    await this.guard('INSIGHT_CHART_READ');
+    await this.guardOrg(org, 'INSIGHT_CHART_READ');
     return this.strip(this.find(this.s.charts, org, id, 'Chart'));
   }
   async createChart(org: number, body: ChartInput) {
-    await this.guard('INSIGHT_CHART_CREATE');
+    await this.guardOrg(org, 'INSIGHT_CHART_CREATE');
     this.find(this.s.datasets, org, body.datasetId, 'Dataset');
     const c = { org, id: this.id(), ...body, createdBy: this.user, createdAt: new Date().toISOString() };
     this.s.charts.push(c);
@@ -511,21 +532,21 @@ export class DemoApi implements Api {
     return this.strip(c);
   }
   async updateChart(org: number, id: number, body: Partial<ChartInput>) {
-    await this.guard('INSIGHT_CHART_UPDATE');
+    await this.guardOrg(org, 'INSIGHT_CHART_UPDATE');
     const c = this.find(this.s.charts, org, id, 'Chart');
     Object.assign(c, Object.fromEntries(Object.entries(body).filter(([, v]) => v !== undefined)));
     this.save();
     return this.strip(c);
   }
   async deleteChart(org: number, id: number) {
-    await this.guard('INSIGHT_CHART_DELETE');
+    await this.guardOrg(org, 'INSIGHT_CHART_DELETE');
     this.find(this.s.charts, org, id, 'Chart');
     this.s.charts = this.s.charts.filter((x) => !(x.id === id && x.org === org));
     this.s.dashboards.forEach((d) => { d.widgets = d.widgets.filter((w) => w.chartId !== id); });
     this.save();
   }
   async renderChart(org: number, id: number, snapshotId: number) {
-    await this.guard('INSIGHT_CHART_READ');
+    await this.guardOrg(org, 'INSIGHT_CHART_READ');
     const c = this.find(this.s.charts, org, id, 'Chart');
     const snap = this.find(this.s.snapshots, org, snapshotId, 'DatasetSnapshot');
     if (snap.datasetId !== c.datasetId) throw new ApiError(400, 'Snapshot does not belong to chart dataset');
@@ -538,11 +559,11 @@ export class DemoApi implements Api {
 
   // ----- dashboards -----
   async listDashboards(org: number, p?: PageRequest) {
-    await this.guard('INSIGHT_DASHBOARD_READ');
+    await this.guardOrg(org, 'INSIGHT_DASHBOARD_READ');
     return this.page(this.s.dashboards.filter((x) => x.org === org), p);
   }
   async getDashboard(org: number, id: number) {
-    await this.guard('INSIGHT_DASHBOARD_READ');
+    await this.guardOrg(org, 'INSIGHT_DASHBOARD_READ');
     return this.strip(this.find(this.s.dashboards, org, id, 'Dashboard'));
   }
   private widgets(org: number, input: DashboardInput['widgets']) {
@@ -552,14 +573,14 @@ export class DemoApi implements Api {
     });
   }
   async createDashboard(org: number, body: DashboardInput) {
-    await this.guard('INSIGHT_DASHBOARD_CREATE');
+    await this.guardOrg(org, 'INSIGHT_DASHBOARD_CREATE');
     const d = { org, id: this.id(), name: body.name, createdBy: this.user, createdAt: new Date().toISOString(), widgets: this.widgets(org, body.widgets ?? []) };
     this.s.dashboards.push(d);
     this.save();
     return this.strip(d);
   }
   async updateDashboard(org: number, id: number, body: Partial<DashboardInput>) {
-    await this.guard('INSIGHT_DASHBOARD_UPDATE');
+    await this.guardOrg(org, 'INSIGHT_DASHBOARD_UPDATE');
     const d = this.find(this.s.dashboards, org, id, 'Dashboard');
     if (body.name) d.name = body.name;
     if (body.widgets) d.widgets = this.widgets(org, body.widgets);
@@ -567,7 +588,7 @@ export class DemoApi implements Api {
     return this.strip(d);
   }
   async deleteDashboard(org: number, id: number) {
-    await this.guard('INSIGHT_DASHBOARD_DELETE');
+    await this.guardOrg(org, 'INSIGHT_DASHBOARD_DELETE');
     this.find(this.s.dashboards, org, id, 'Dashboard');
     this.s.dashboards = this.s.dashboards.filter((x) => !(x.id === id && x.org === org));
     this.save();
@@ -620,5 +641,30 @@ export class DemoApi implements Api {
   async listAuditLogs(p?: PageRequest) {
     await this.guard('RBAC_ROLE_MANAGE');
     return this.page(this.s.audit.map((a) => ({ ...a, org: 0 })), p);
+  }
+
+  async listOrganizations() {
+    await this.guard('RBAC_ORG_MANAGE');
+    return structuredClone(this.s.organizations);
+  }
+  async createOrganization(name: string) {
+    await this.guard('RBAC_ORG_MANAGE');
+    if (!name.trim()) throw new ApiError(400, 'name is required');
+    const org = { id: this.id(), name: name.trim(), createdAt: new Date().toISOString() };
+    this.s.organizations.push(org);
+    this.audit('ORGANIZATION_CREATED', 'ORGANIZATION', String(org.id), { name: org.name });
+    this.save();
+    return structuredClone(org);
+  }
+  async replaceUserOrganizations(id: number, organizationIds: number[]) {
+    await this.guard('RBAC_ORG_MANAGE');
+    const u = this.s.users.find((x) => x.id === id);
+    if (!u) throw new ApiError(400, 'User not found');
+    if (organizationIds.some((o) => !this.s.organizations.some((x) => x.id === o))) throw new ApiError(400, 'One or more organization ids are invalid');
+    const before = u.organizationIds;
+    u.organizationIds = [...new Set(organizationIds)].sort((a, b) => a - b);
+    this.audit('USER_ORGANIZATIONS_REPLACED', 'USER', String(id), { before, after: u.organizationIds });
+    this.save();
+    return structuredClone(u);
   }
 }

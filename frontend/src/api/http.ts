@@ -1,5 +1,5 @@
 import type {
-  Api, AuditLog, Chart, ConnectionTest, Dashboard, DataSource, Dataset, ExecuteResult, Json,
+  Api, AuditLog, Me, Organization, Chart, ConnectionTest, Dashboard, DataSource, Dataset, ExecuteResult, Json,
   Page, PageRequest, Permission, QueryRun, QueryTemplate, RenderedChart, Role, Snapshot, UserRoles,
   ValidateResult,
 } from './types';
@@ -72,6 +72,8 @@ export class HttpApi implements Api {
   async health() {
     try { await this.req('GET', '/api/health'); return true; } catch { return false; }
   }
+
+  me() { return this.req<Me>('GET', '/api/me'); }
 
   async listDataSources(org: number, p?: PageRequest) {
     return toPage<DataSource>(await this.req('GET', this.org('/api/insight/data-sources', org, pageQuery(p))));
@@ -177,5 +179,13 @@ export class HttpApi implements Api {
   async listAuditLogs(p?: PageRequest) {
     const q = pageQuery(p);
     return toPage<AuditLog>(await this.req('GET', '/api/admin/rbac/audit-logs' + (q ? `?${q}` : '')));
+  }
+
+  listOrganizations() { return this.req<Organization[]>('GET', '/api/admin/rbac/organizations'); }
+  createOrganization(name: string) {
+    return this.req<Organization>('POST', '/api/admin/rbac/organizations', { name });
+  }
+  replaceUserOrganizations(id: number, organizationIds: number[]) {
+    return this.req<UserRoles>('PUT', `/api/admin/rbac/users/${id}/organizations`, { organizationIds });
   }
 }

@@ -26,7 +26,8 @@ npm run dev            # http://localhost:5173 (/api is proxied to :8080)
 ```
 
 Sign in with the seeded admin (`ADMIN_USERNAME` / `ADMIN_PASSWORD`, defaults `admin` / `ChangeMe_DevOnly_123456!`).
-The organization id sent as `?orgId=` can be switched in the sidebar.
+The sidebar lists the organizations you are a member of (from the JWT `orgs` claim, with names from `GET /api/me`),
+and the selected one is sent as `?orgId=`. Admins manage organizations and memberships under Access control.
 
 If the frontend is served from another origin, set `VITE_API_BASE_URL` (see `.env.example`) and allow that origin on the API
 with `CORS_ALLOWED_ORIGINS`.

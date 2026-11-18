@@ -1,7 +1,8 @@
 import { useState, type ReactNode } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useSession } from '../auth/session';
-import { useToast } from './ui';
+import { useAsync } from '../lib/hooks';
+import { Empty, useToast } from './ui';
 
 const I = {
   home: 'M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z',
@@ -34,7 +35,9 @@ const NAV: { to: string; label: string; icon: string; perm?: string; group: stri
 ];
 
 export function Layout({ children }: { children?: ReactNode }) {
-  const { username, mode, orgId, setOrgId, signOut, can, resetDemo } = useSession();
+  const { api, username, mode, orgId, orgIds, hasOrg, setOrgId, signOut, can, resetDemo } = useSession();
+  const me = useAsync(() => api.me(), [api, orgIds.join(',')]);
+  const orgName = (id: number) => me.data?.organizations.find((o) => o.id === id)?.name ?? `Organization ${id}`;
   const [open, setOpen] = useState(false);
   const toast = useToast();
   const loc = useLocation();
@@ -70,15 +73,15 @@ export function Layout({ children }: { children?: ReactNode }) {
         </nav>
 
         <div className="sidebar-foot">
-          <label className="org-picker">
-            <span>Org</span>
-            <input
-              type="number" min={1} value={orgId}
-              onChange={(e) => { const n = Number(e.target.value); if (n > 0) setOrgId(n); }}
-              disabled={mode === 'demo'}
-              title={mode === 'demo' ? 'Demo data lives in org 1' : 'Organization id sent as ?orgId='}
-            />
-          </label>
+          {hasOrg && (
+            <label className="org-picker">
+              <span>Org</span>
+              <select value={orgId} onChange={(e) => setOrgId(Number(e.target.value))} disabled={orgIds.length < 2}
+                title="Organizations you are a member of">
+                {orgIds.map((id) => <option key={id} value={id}>{orgName(id)}</option>)}
+              </select>
+            </label>
+          )}
           <div className="who">
             <div className="avatar" aria-hidden>{(username ?? '?').slice(0, 1).toUpperCase()}</div>
             <div className="who-text">
@@ -102,7 +105,12 @@ export function Layout({ children }: { children?: ReactNode }) {
           {mode === 'demo' && <span className="demo-pill">Demo</span>}
         </div>
         <main className="content" key={loc.pathname}>
-          {children ?? <Outlet />}
+          {!hasOrg && !loc.pathname.startsWith('/admin') ? (
+            <Empty title="No organization yet">
+              Your account is not a member of any organization. An administrator can add you under Access control → Users.
+              {can('RBAC_ORG_MANAGE') && ' You can do that yourself, then sign in again.'}
+            </Empty>
+          ) : children ?? <Outlet />}
         </main>
       </div>
       <div className="scrim" onClick={() => setOpen(false)} />

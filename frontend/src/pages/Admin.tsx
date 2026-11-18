@@ -1,17 +1,18 @@
 import { useEffect, useState } from 'react';
-import type { Role } from '../api/types';
+import type { Organization, Role } from '../api/types';
 import { useSession } from '../auth/session';
 import { useAsync } from '../lib/hooks';
 import { fmtDate } from '../lib/format';
 import { Badge, ErrorNote, Field, Modal, PageHeader, Pager, Spinner, useToast } from '../components/ui';
 
-type Tab = 'roles' | 'users' | 'audit';
+type Tab = 'roles' | 'users' | 'orgs' | 'audit';
 
 export function Admin() {
   const { can } = useSession();
   const tabs: { id: Tab; label: string; perm: string }[] = [
     { id: 'roles', label: 'Roles & permissions', perm: 'RBAC_ROLE_MANAGE' },
     { id: 'users', label: 'Users', perm: 'RBAC_USER_ROLE_ASSIGN' },
+    { id: 'orgs', label: 'Organizations', perm: 'RBAC_ORG_MANAGE' },
     { id: 'audit', label: 'Audit log', perm: 'RBAC_ROLE_MANAGE' },
   ];
   const visible = tabs.filter((t) => can(t.perm));
@@ -27,6 +28,7 @@ export function Admin() {
       </div>
       {tab === 'roles' && <RolesTab />}
       {tab === 'users' && <UsersTab />}
+      {tab === 'orgs' && <OrganizationsTab />}
       {tab === 'audit' && <AuditTab />}
     </>
   );
@@ -130,11 +132,18 @@ function NewRole({ onClose, onSaved }: { onClose: () => void; onSaved: (id: numb
 }
 
 function UsersTab() {
-  const { api } = useSession();
+  const { api, can } = useSession();
   const toast = useToast();
   const [query, setQuery] = useState('');
   const users = useAsync(() => api.listUsers(query || undefined), [api, query]);
   const roles = useAsync(() => api.listRoles().catch(() => [] as Role[]), [api]);
+  const orgs = useAsync(async () => (can('RBAC_ORG_MANAGE') ? api.listOrganizations() : [] as Organization[]), [api]);
+
+  async function toggleOrg(userId: number, current: number[], orgId: number) {
+    const next = current.includes(orgId) ? current.filter((o) => o !== orgId) : [...current, orgId];
+    try { await api.replaceUserOrganizations(userId, next); toast('ok', 'Memberships updated — effective on next sign-in'); users.reload(); }
+    catch (e) { toast('bad', (e as Error).message); }
+  }
 
   async function toggle(userId: number, current: string[], role: string) {
     const next = current.includes(role) ? current.filter((r) => r !== role) : [...current, role];
@@ -149,7 +158,7 @@ function UsersTab() {
       {users.error && <ErrorNote message={users.error} onRetry={users.reload} />}
       <div className="table-scroll">
         <table className="table">
-          <thead><tr><th>User</th><th>Email</th><th>Roles</th></tr></thead>
+          <thead><tr><th>User</th><th>Email</th><th>Roles</th>{can('RBAC_ORG_MANAGE') && <th>Organizations</th>}</tr></thead>
           <tbody>
             {users.data?.map((u) => (
               <tr key={u.id}>
@@ -165,11 +174,64 @@ function UsersTab() {
                     {!roles.data?.length && u.roleNames.map((r) => <Badge key={r}>{r}</Badge>)}
                   </div>
                 </td>
+                {can('RBAC_ORG_MANAGE') && (
+                  <td>
+                    <div className="chip-row">
+                      {(orgs.data ?? []).map((o) => (
+                        <button key={o.id} className={`chip chip-btn ${u.organizationIds?.includes(o.id) ? 'chip-on' : ''}`} onClick={() => toggleOrg(u.id, u.organizationIds ?? [], o.id)}>
+                          {o.name}
+                        </button>
+                      ))}
+                    </div>
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+function OrganizationsTab() {
+  const { api } = useSession();
+  const toast = useToast();
+  const orgs = useAsync(() => api.listOrganizations(), [api]);
+  const users = useAsync(() => api.listUsers(), [api]);
+  const [name, setName] = useState('');
+
+  async function create() {
+    try { const o = await api.createOrganization(name); toast('ok', `Organization "${o.name}" created`); setName(''); orgs.reload(); }
+    catch (e) { toast('bad', (e as Error).message); }
+  }
+
+  if (orgs.loading && !orgs.data) return <Spinner />;
+  if (orgs.error) return <ErrorNote message={orgs.error} onRetry={orgs.reload} />;
+  return (
+    <div className="card table-card">
+      <form className="table-toolbar row-gap" onSubmit={(e) => { e.preventDefault(); create(); }}>
+        <input placeholder="New organization name" value={name} onChange={(e) => setName(e.target.value)} />
+        <button className="btn btn-primary btn-sm" disabled={!name.trim()}>+ Create</button>
+      </form>
+      <div className="table-scroll">
+        <table className="table">
+          <thead><tr><th>Organization</th><th>Members</th><th>Created</th></tr></thead>
+          <tbody>
+            {orgs.data?.map((o) => {
+              const members = users.data?.filter((u) => u.organizationIds?.includes(o.id)) ?? [];
+              return (
+                <tr key={o.id}>
+                  <td><b>{o.name}</b> <span className="mono muted small">#{o.id}</span></td>
+                  <td><div className="chip-row">{members.length ? members.map((u) => <span key={u.id} className="chip">{u.username}</span>) : <span className="muted small">No members</span>}</div></td>
+                  <td className="small">{o.createdAt ? fmtDate(o.createdAt) : '—'}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <p className="muted small" style={{ padding: '10px 14px' }}>Assign members on the Users tab. Data in an organization is only reachable by its members.</p>
     </div>
   );
 }
