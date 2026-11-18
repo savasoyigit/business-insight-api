@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { ExecuteResult, FieldDef, Json, ParamDef, QueryTemplate, ValidateResult } from '../api/types';
+import type { FieldDef, Json, ParamDef, QueryTemplate, RunDetails, ValidateResult } from '../api/types';
+import { isFinished, pollRun } from '../lib/runs';
 import { useSession } from '../auth/session';
 import { useAsync } from '../lib/hooks';
 import { detectParams, guardSql } from '../api/demo';
@@ -93,7 +94,7 @@ function RunPanel({ template }: { template: QueryTemplate }) {
   const [snapshot, setSnapshot] = useState(false);
   const [busy, setBusy] = useState<'validate' | 'execute' | null>(null);
   const [validation, setValidation] = useState<ValidateResult | null>(null);
-  const [result, setResult] = useState<ExecuteResult | null>(null);
+  const [result, setResult] = useState<RunDetails | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const payload = (): Json => Object.fromEntries(
@@ -107,7 +108,11 @@ function RunPanel({ template }: { template: QueryTemplate }) {
     if (kind === 'validate') setResult(null); else setValidation(null);
     try {
       if (kind === 'validate') setValidation(await api.validateQuery(orgId, template.id, payload()));
-      else setResult(await api.executeQuery(orgId, template.id, payload(), snapshot));
+      else {
+        // Asynchronous: the run is queued, then polled until it finishes.
+        const submitted = await api.submitQuery(orgId, template.id, payload(), snapshot);
+        await pollRun(api, orgId, submitted.queryRunId, setResult);
+      }
     } catch (e) { setError((e as Error).message); } finally { setBusy(null); }
   }
 
@@ -142,14 +147,21 @@ function RunPanel({ template }: { template: QueryTemplate }) {
         </div>
       )}
       {result && (
-        <div className={`result ${result.status === 'SUCCESS' ? 'ok' : 'bad'}`}>
+        <div className={`result ${!isFinished(result.status) ? '' : result.status === 'SUCCESS' ? 'ok' : 'bad'}`}>
           <div className="result-main">
-            <Badge tone={result.status === 'SUCCESS' ? 'ok' : 'bad'}>{result.status}</Badge>
-            <span className="kpi-n">{result.rowCount}</span><span className="muted">rows</span>
-            <span className="kpi-n">{result.durationMs}</span><span className="muted">ms</span>
+            <Badge tone={result.status === 'SUCCESS' ? 'ok' : result.status === 'FAILED' ? 'bad' : 'warn'}>
+              {!isFinished(result.status) && <span className="pulse-dot" />}{result.status}
+            </Badge>
+            {isFinished(result.status) ? (
+              <>
+                <span className="kpi-n">{result.rowCount ?? 0}</span><span className="muted">rows</span>
+                <span className="kpi-n">{result.durationMs}</span><span className="muted">ms</span>
+              </>
+            ) : <span className="muted">{result.status === 'QUEUED' ? 'Waiting for a worker…' : 'Running on the data source…'}</span>}
           </div>
+          {result.errorMessage && <div className="small note-error-text">{result.errorMessage}</div>}
           <div className="small mono muted">
-            run #{result.queryRunId} · hash {result.queryHash ?? '—'}{result.snapshotId ? ` · snapshot #${result.snapshotId}` : ''}{result.errorType ? ` · ${result.errorType}` : ''}
+            run #{result.id} · hash {result.queryHash ?? '—'}{result.snapshotId ? ` · snapshot #${result.snapshotId}` : ''}{result.errorType ? ` · ${result.errorType}` : ''}
           </div>
           <p className="small muted">Tip: wrap this template in a dataset to materialize rows as snapshots and chart them.</p>
         </div>

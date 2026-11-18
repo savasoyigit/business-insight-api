@@ -3,7 +3,8 @@ import type { Dataset, Json } from '../api/types';
 import { useSession } from '../auth/session';
 import { useAsync } from '../lib/hooks';
 import { fmtDate, relTime } from '../lib/format';
-import { Empty, ErrorNote, Field, Modal, PageHeader, Pager, RowsTable, Spinner, parseJson, useToast } from '../components/ui';
+import { REFRESH_PRESETS, describeCron, pollRun } from '../lib/runs';
+import { Badge, Empty, ErrorNote, Field, Modal, PageHeader, Pager, RowsTable, Spinner, parseJson, useToast } from '../components/ui';
 
 export function Datasets() {
   const { api, orgId, can } = useSession();
@@ -41,7 +42,7 @@ export function Datasets() {
             {list.data.content.map((d) => (
               <button key={d.id} className={`list-item ${d.id === selected ? 'on' : ''}`} onClick={() => setSelected(d.id)}>
                 <span className="list-item-title">{d.name}</span>
-                <span className="muted small">{qtName(d.queryTemplateId)}</span>
+                <span className="muted small">{qtName(d.queryTemplateId)}{d.refreshCron ? ' · ⟳ auto refresh' : ''}</span>
               </button>
             ))}
             <Pager page={list.data} onPage={setPage} />
@@ -71,6 +72,7 @@ function DatasetDetail({ dataset, templateName, onEdit, onDeleted }: { dataset: 
   const [openSnap, setOpenSnap] = useState<number | null>(null);
   const [paramsText, setParamsText] = useState(JSON.stringify(dataset.defaultParams ?? {}, null, 2));
   const [busy, setBusy] = useState(false);
+  const [runStatus, setRunStatus] = useState<string | null>(null);
   const snaps = useAsync(() => api.listSnapshots(orgId, dataset.id, { page, size: 8, sort: 'id,desc' }), [api, orgId, dataset.id, page]);
 
   useEffect(() => {
@@ -82,12 +84,16 @@ function DatasetDetail({ dataset, templateName, onEdit, onDeleted }: { dataset: 
     if (err) return toast('bad', `Params: ${err}`);
     setBusy(true);
     try {
-      const r = await api.createSnapshot(orgId, dataset.id, params as Json | undefined);
-      toast(r.status === 'SUCCESS' ? 'ok' : 'bad', `Snapshot ${r.status.toLowerCase()} · ${r.rowCount} rows in ${r.durationMs}ms`);
+      const submitted = await api.submitSnapshot(orgId, dataset.id, params as Json | undefined);
+      if (submitted.coalesced) toast('ok', `An identical snapshot is already running (run #${submitted.queryRunId})`);
+      const r = await pollRun(api, orgId, submitted.queryRunId, (run) => setRunStatus(run.status));
+      toast(r.status === 'SUCCESS' ? 'ok' : 'bad', r.status === 'SUCCESS'
+        ? `Snapshot ready · ${r.rowCount} rows in ${r.durationMs}ms`
+        : `Snapshot failed${r.errorMessage ? `: ${r.errorMessage}` : ''}`);
       setPage(0);
       setOpenSnap(r.snapshotId);
       snaps.reload();
-    } catch (e) { toast('bad', (e as Error).message); } finally { setBusy(false); }
+    } catch (e) { toast('bad', (e as Error).message); } finally { setBusy(false); setRunStatus(null); }
   }
 
   async function remove() {
@@ -111,12 +117,18 @@ function DatasetDetail({ dataset, templateName, onEdit, onDeleted }: { dataset: 
         </div>
       </div>
 
+      <div className="schedule-line">
+        <Badge tone={dataset.refreshCron ? 'accent' : 'neutral'}>⟳ {describeCron(dataset.refreshCron)}</Badge>
+        {dataset.nextRefreshAt && <span className="muted">next {fmtDate(dataset.nextRefreshAt)}</span>}
+        {dataset.lastRefreshAt && <span className="muted">· last {relTime(dataset.lastRefreshAt)}</span>}
+      </div>
+
       {can('INSIGHT_DATASET_CREATE') && (
         <div className="snapshot-bar">
           <Field label="Parameters for this snapshot (JSON)">
             <textarea className="mono" rows={2} value={paramsText} onChange={(e) => setParamsText(e.target.value)} />
           </Field>
-          <button className="btn btn-primary" onClick={take} disabled={busy}>{busy ? 'Running…' : '⟳ Take snapshot'}</button>
+          <button className="btn btn-primary" onClick={take} disabled={busy}>{busy ? (runStatus === 'RUNNING' ? 'Running…' : 'Queued…') : '⟳ Take snapshot'}</button>
         </div>
       )}
 
@@ -150,6 +162,9 @@ function DatasetForm({ initial, templates, onClose, onSaved }: {
   const [name, setName] = useState(initial?.name ?? '');
   const [qt, setQt] = useState<number>(initial?.queryTemplateId ?? templates[0]?.id ?? 0);
   const [paramsText, setParamsText] = useState(JSON.stringify(initial?.defaultParams ?? {}, null, 2));
+  const initialCron = initial?.refreshCron ?? '';
+  const [cronChoice, setCronChoice] = useState(!initialCron ? '' : REFRESH_PRESETS.some((p) => p.cron === initialCron) ? initialCron : 'custom');
+  const [customCron, setCustomCron] = useState(REFRESH_PRESETS.some((p) => p.cron === initialCron) ? '' : initialCron);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -158,7 +173,8 @@ function DatasetForm({ initial, templates, onClose, onSaved }: {
     if (err) return setError(`Default params: ${err}`);
     setBusy(true); setError(null);
     try {
-      const body = { name, queryTemplateId: qt, defaultParams: (defaultParams ?? {}) as Json };
+      const refreshCron = cronChoice === 'custom' ? customCron.trim() : cronChoice;
+      const body = { name, queryTemplateId: qt, defaultParams: (defaultParams ?? {}) as Json, refreshCron };
       const saved = initial ? await api.updateDataset(orgId, initial.id, body) : await api.createDataset(orgId, body);
       toast('ok', initial ? 'Dataset updated' : 'Dataset created');
       onSaved(saved.id);
@@ -176,6 +192,18 @@ function DatasetForm({ initial, templates, onClose, onSaved }: {
         </select>
       </Field>
       <Field label="Default params (JSON)"><textarea className="mono" rows={4} value={paramsText} onChange={(e) => setParamsText(e.target.value)} /></Field>
+      <Field label="Auto refresh" hint="Takes a snapshot on a schedule (server time zone, UTC by default).">
+        <select value={cronChoice} onChange={(e) => setCronChoice(e.target.value)}>
+          <option value="">Off — manual snapshots only</option>
+          {REFRESH_PRESETS.map((p) => <option key={p.cron} value={p.cron}>{p.label}</option>)}
+          <option value="custom">Custom cron…</option>
+        </select>
+      </Field>
+      {cronChoice === 'custom' && (
+        <Field label="Cron expression" hint={<>5 fields (minute hour day month weekday), e.g. <span className="mono">30 2 * * 1</span>; at least 5 minutes apart.</>}>
+          <input className="mono" value={customCron} onChange={(e) => setCustomCron(e.target.value)} placeholder="0 6 * * *" />
+        </Field>
+      )}
       {error && <div className="note note-error">{error}</div>}
     </Modal>
   );

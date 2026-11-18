@@ -423,3 +423,6 @@ input[type='checkbox'] { width: auto; accent-color: var(--accent); }
   h1 { font-size: 24px; }
 }
 .secret-enc { color: var(--ok); font-family: var(--font); }
+.pulse-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; display: inline-block; margin-right: 2px; animation: pulse 1s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: 0.25; } }
+.schedule-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: -4px 0 14px; font-size: 12.5px; }

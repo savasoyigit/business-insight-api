@@ -12,6 +12,10 @@ plus query-run history and RBAC administration (roles, permissions, user roles, 
 - **Query workbench** – highlighted SQL with `:named` params, a live guardrail preview, typed parameter inputs, validate and execute.
 - **Chart builder with live preview** – field pickers come from the latest snapshot; the preview uses the same aggregation as `ChartService.render` (sum / avg / count, optional series).
 - **Dashboards** – widgets on a 12-column grid driven by the stored `{x, y, w, h}` layouts, with a simple layout editor.
+- **Async runs and schedules** – Execute and Take snapshot queue a run and follow it live (queued → running → done);
+  datasets can refresh on a schedule, and the Query runs page updates by itself.
+- **Organizations and secrets** – an organization picker, membership admin, and data source passwords stored encrypted
+  or referenced from the server environment.
 - **Demo sandbox** – an in-browser mock of the API (seeded with a fictional coffee roastery) so the app runs with no backend. Pick `admin`, `analyst` or `viewer` to see RBAC change the UI.
 - Light and dark themes (follows the OS), responsive down to phone width.
 
