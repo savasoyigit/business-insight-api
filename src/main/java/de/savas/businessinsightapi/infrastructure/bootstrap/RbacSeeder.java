@@ -1,5 +1,7 @@
 package de.savas.businessinsightapi.infrastructure.bootstrap;
 
+import de.savas.businessinsightapi.domain.organization.Organization;
+import de.savas.businessinsightapi.domain.organization.OrganizationRepository;
 import de.savas.businessinsightapi.domain.security.Permission;
 import de.savas.businessinsightapi.domain.security.PermissionRepository;
 import de.savas.businessinsightapi.domain.security.Role;
@@ -21,13 +23,15 @@ public class RbacSeeder implements ApplicationRunner {
     private final RoleRepository roleRepo;
     private final UserRepository userRepo;
     private final PasswordEncoder encoder;
+    private final OrganizationRepository organizationRepo;
 
     public RbacSeeder(PermissionRepository permissionRepo, RoleRepository roleRepo,
-                      UserRepository userRepo, PasswordEncoder encoder) {
+                      UserRepository userRepo, PasswordEncoder encoder, OrganizationRepository organizationRepo) {
         this.permissionRepo = permissionRepo;
         this.roleRepo = roleRepo;
         this.userRepo = userRepo;
         this.encoder = encoder;
+        this.organizationRepo = organizationRepo;
     }
 
     @Override
@@ -63,7 +67,8 @@ public class RbacSeeder implements ApplicationRunner {
 
                 perm("RBAC_ROLE_MANAGE", "Manage roles"),
                 perm("RBAC_PERMISSION_MANAGE", "Manage permissions"),
-                perm("RBAC_USER_ROLE_ASSIGN", "Assign roles to users")
+                perm("RBAC_USER_ROLE_ASSIGN", "Assign roles to users"),
+                perm("RBAC_ORG_MANAGE", "Manage organizations and memberships")
         );
 
         perms.forEach(p ->
@@ -91,10 +96,15 @@ public class RbacSeeder implements ApplicationRunner {
 
         Optional<User> existing = userRepo.findByUsername(adminUsername);
 
+        Long defaultOrgId = organizationRepo.findFirstByOrderByIdAsc()
+                .orElseGet(() -> organizationRepo.save(new Organization("Default Org")))
+                .getId();
+
         if (existing.isEmpty()) {
             // sadece yoksa oluştur
             User u = new User(adminEmail, adminUsername, encoder.encode(adminPassword));
             u.getRoles().add(admin);
+            u.getOrganizationIds().add(defaultOrgId);
             userRepo.save(u);
             System.out.println(">>> Admin created: username=" + adminUsername);
         } else {

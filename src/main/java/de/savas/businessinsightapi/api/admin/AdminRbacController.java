@@ -1,5 +1,6 @@
 package de.savas.businessinsightapi.api.admin;
 
+import de.savas.businessinsightapi.application.organization.OrganizationAdminService;
 import de.savas.businessinsightapi.application.rbac.RbacAdminService;
 import de.savas.businessinsightapi.api.admin.AdminRbacDtos.*;
 import jakarta.validation.Valid;
@@ -15,9 +16,11 @@ import java.util.List;
 public class AdminRbacController {
 
     private final RbacAdminService service;
+    private final OrganizationAdminService organizationService;
 
-    public AdminRbacController(RbacAdminService service) {
+    public AdminRbacController(RbacAdminService service, OrganizationAdminService organizationService) {
         this.service = service;
+        this.organizationService = organizationService;
     }
 
     @GetMapping("/permissions")
@@ -72,5 +75,23 @@ public class AdminRbacController {
     @PreAuthorize("hasAuthority('RBAC_USER_ROLE_ASSIGN')")
     public UserRoleResponse replaceUserRoles(@PathVariable Long id, @Valid @RequestBody ReplaceUserRolesRequest request) {
         return UserRoleResponse.from(service.replaceUserRoles(id, request.roleNames()));
+    }
+
+    @GetMapping("/organizations")
+    @PreAuthorize("hasAuthority('RBAC_ORG_MANAGE')")
+    public List<OrganizationResponse> listOrganizations() {
+        return organizationService.list().stream().map(OrganizationResponse::from).toList();
+    }
+
+    @PostMapping("/organizations")
+    @PreAuthorize("hasAuthority('RBAC_ORG_MANAGE')")
+    public OrganizationResponse createOrganization(@Valid @RequestBody CreateOrganizationRequest request) {
+        return OrganizationResponse.from(organizationService.create(request.name()));
+    }
+
+    @PutMapping("/users/{id}/organizations")
+    @PreAuthorize("hasAuthority('RBAC_ORG_MANAGE')")
+    public UserRoleResponse replaceUserOrganizations(@PathVariable Long id, @Valid @RequestBody ReplaceUserOrganizationsRequest request) {
+        return UserRoleResponse.from(organizationService.replaceUserOrganizations(id, request.organizationIds()));
     }
 }

@@ -44,8 +44,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     .map(SimpleGrantedAuthority::new)
                     .toList();
 
+            var principal = new ApiPrincipal(username, jwtService.extractOrganizationIds(token));
             var auth = new UsernamePasswordAuthenticationToken(
-                    username,
+                    principal,
                     null,
                     authorities
             );
