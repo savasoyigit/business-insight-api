@@ -16,10 +16,13 @@ public class SecurityConfig {
 
     private final CorrelationIdFilter correlationIdFilter;
     private final JwtAuthenticationFilter jwtFilter;
+    private final SecurityErrorHandlers securityErrorHandlers;
 
-    public SecurityConfig(CorrelationIdFilter correlationIdFilter, JwtAuthenticationFilter jwtFilter) {
+    public SecurityConfig(CorrelationIdFilter correlationIdFilter, JwtAuthenticationFilter jwtFilter,
+                          SecurityErrorHandlers securityErrorHandlers) {
         this.correlationIdFilter = correlationIdFilter;
         this.jwtFilter = jwtFilter;
+        this.securityErrorHandlers = securityErrorHandlers;
     }
 
     @Bean
@@ -32,6 +35,10 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/health", "/actuator/health", "/api/auth/**").permitAll()
                         .anyRequest().authenticated()
+                )
+                .exceptionHandling(ex -> ex
+                        .authenticationEntryPoint(securityErrorHandlers)
+                        .accessDeniedHandler(securityErrorHandlers)
                 )
                 .addFilterBefore(correlationIdFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);

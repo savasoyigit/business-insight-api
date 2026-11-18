@@ -4,9 +4,11 @@ import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import jakarta.validation.ConstraintViolationException;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -75,6 +77,28 @@ public class GlobalExceptionHandler {
     ) {
         return buildError(HttpStatus.UNAUTHORIZED, ex.getMessage(), request.getRequestURI());
     }
+
+        // 403 - @PreAuthorize denials (AuthorizationDeniedException) are thrown inside the controller call,
+        // so they reach this advice instead of the security filter chain; keep them from falling into the 500 fallback.
+        @ExceptionHandler(AccessDeniedException.class)
+        public ResponseEntity<ApiError> handleAccessDenied(
+                        AccessDeniedException ex,
+                        HttpServletRequest request
+        ) {
+                return buildError(HttpStatus.FORBIDDEN, "Access denied", request.getRequestURI());
+        }
+
+        // 409 - Unique constraint violations, e.g. a duplicate name within an organization or a taken username.
+        // The database detail (table, constraint, values) is logged, not returned.
+        @ExceptionHandler(DataIntegrityViolationException.class)
+        public ResponseEntity<ApiError> handleDataIntegrity(
+                        DataIntegrityViolationException ex,
+                        HttpServletRequest request
+        ) {
+                log.warn("Data integrity violation on {} {}: {}", request.getMethod(), request.getRequestURI(),
+                                ex.getMostSpecificCause().getMessage());
+                return buildError(HttpStatus.CONFLICT, "Request conflicts with existing data (for example a duplicate name)", request.getRequestURI());
+        }
 
         // 429 - Rate limiting
         @ExceptionHandler(TooManyRequestsException.class)
