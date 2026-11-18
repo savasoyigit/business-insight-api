@@ -280,9 +280,14 @@ CORS:
 
 All errors use the same JSON shape (`timestamp`, `status`, `error`, `message`, `path`).
 
-- `400`: validation errors, `BadRequestException`, and malformed or unreadable request bodies
-- `401` / `429`: authentication failures and rate limiting
-- `500`: unexpected errors. The response stays generic, and the full exception is logged with the request's correlation ID.
+| Status | When |
+| --- | --- |
+| `400` | Validation errors, `BadRequestException`, malformed or unreadable request bodies |
+| `401` | Missing, malformed or expired token; invalid credentials; locked account |
+| `403` | Authenticated, but the token lacks the required permission (`@PreAuthorize` or the filter chain) |
+| `409` | Unique constraint violations, such as a duplicate name within an organization or a taken username |
+| `429` | Login rate limit exceeded |
+| `500` | Unexpected errors. The response stays generic, and the full exception is logged with the request's correlation ID. |
 
 ## JSON Fields and Jackson
 
