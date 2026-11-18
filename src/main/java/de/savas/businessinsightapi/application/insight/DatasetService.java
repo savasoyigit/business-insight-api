@@ -23,15 +23,21 @@ public class DatasetService {
     private final QueryTemplateRepository queryTemplateRepo;
     private final DatasetSnapshotRepository snapshotRepo;
     private final QueryExecutionService queryExecutionService;
+    private final QueryRunJobService jobService;
+    private final DatasetRefreshScheduler refreshScheduler;
 
     public DatasetService(DatasetRepository datasetRepo,
                           QueryTemplateRepository queryTemplateRepo,
                           DatasetSnapshotRepository snapshotRepo,
-                          QueryExecutionService queryExecutionService) {
+                          QueryExecutionService queryExecutionService,
+                          QueryRunJobService jobService,
+                          DatasetRefreshScheduler refreshScheduler) {
         this.datasetRepo = datasetRepo;
         this.queryTemplateRepo = queryTemplateRepo;
         this.snapshotRepo = snapshotRepo;
         this.queryExecutionService = queryExecutionService;
+        this.jobService = jobService;
+        this.refreshScheduler = refreshScheduler;
     }
 
     public Page<Dataset> list(Long organizationId, Pageable pageable) {
@@ -46,18 +52,21 @@ public class DatasetService {
         return dataset;
     }
 
-    public Dataset create(Long organizationId, String name, Long queryTemplateId, JsonNode defaultParams) {
+    public Dataset create(Long organizationId, String name, Long queryTemplateId, JsonNode defaultParams, String refreshCron) {
         ensureQueryTemplateBelongsToOrg(organizationId, queryTemplateId);
-        return datasetRepo.save(new Dataset(
+        Dataset dataset = new Dataset(
                 organizationId,
                 requireName(name),
                 queryTemplateId,
                 normalizeDefaultParams(defaultParams),
                 currentUsername()
-        ));
+        );
+        applySchedule(dataset, refreshCron);
+        return datasetRepo.save(dataset);
     }
 
-    public Dataset update(Long organizationId, Long id, String name, Long queryTemplateId, JsonNode defaultParams) {
+    /** {@code refreshCron}: null leaves the schedule unchanged, blank removes it. */
+    public Dataset update(Long organizationId, Long id, String name, Long queryTemplateId, JsonNode defaultParams, String refreshCron) {
         Dataset dataset = get(organizationId, id);
         if (name != null) {
             dataset.setName(requireName(name));
@@ -69,7 +78,15 @@ public class DatasetService {
         if (defaultParams != null) {
             dataset.setDefaultParams(normalizeDefaultParams(defaultParams));
         }
+        if (refreshCron != null) {
+            applySchedule(dataset, refreshCron);
+        }
         return datasetRepo.save(dataset);
+    }
+
+    private void applySchedule(Dataset dataset, String refreshCron) {
+        String normalized = refreshScheduler.normalize(refreshCron);
+        dataset.setRefreshSchedule(normalized, refreshScheduler.nextFireTime(normalized));
     }
 
     public void delete(Long organizationId, Long id) {
@@ -85,6 +102,12 @@ public class DatasetService {
     public QueryExecutionService.ExecutionResult createSnapshot(Long organizationId, Long datasetId, Map<String, Object> params) {
         Dataset dataset = get(organizationId, datasetId);
         return queryExecutionService.executeForDataset(organizationId, dataset, params == null ? Map.of() : params);
+    }
+
+    /** Queues a snapshot; poll the returned run for the result. */
+    public QueryRunJobService.SubmittedRun submitSnapshot(Long organizationId, Long datasetId, Map<String, Object> params) {
+        Dataset dataset = get(organizationId, datasetId);
+        return jobService.submitSnapshot(organizationId, dataset, params == null ? Map.of() : params, currentUsername());
     }
 
     private void ensureQueryTemplateBelongsToOrg(Long organizationId, Long queryTemplateId) {

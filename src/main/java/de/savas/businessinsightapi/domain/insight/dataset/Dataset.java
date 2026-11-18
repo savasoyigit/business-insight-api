@@ -35,6 +35,16 @@ public class Dataset {
     @Column(name = "created_at", nullable = false)
     private OffsetDateTime createdAt = OffsetDateTime.now();
 
+    /** Cron expression for automatic snapshots (null = manual only). */
+    @Column(name = "refresh_cron", length = 100)
+    private String refreshCron;
+
+    @Column(name = "next_refresh_at")
+    private OffsetDateTime nextRefreshAt;
+
+    @Column(name = "last_refresh_at")
+    private OffsetDateTime lastRefreshAt;
+
     protected Dataset() {
     }
 
@@ -57,4 +67,14 @@ public class Dataset {
     public void setName(String name) { this.name = name; }
     public void setQueryTemplateId(Long queryTemplateId) { this.queryTemplateId = queryTemplateId; }
     public void setDefaultParams(JsonNode defaultParams) { this.defaultParams = defaultParams; }
+
+    public String getRefreshCron() { return refreshCron; }
+    public OffsetDateTime getNextRefreshAt() { return nextRefreshAt; }
+    public OffsetDateTime getLastRefreshAt() { return lastRefreshAt; }
+
+    /** Sets or clears (null) the schedule together with its next fire time. */
+    public void setRefreshSchedule(String refreshCron, OffsetDateTime nextRefreshAt) {
+        this.refreshCron = refreshCron;
+        this.nextRefreshAt = nextRefreshAt;
+    }
 }

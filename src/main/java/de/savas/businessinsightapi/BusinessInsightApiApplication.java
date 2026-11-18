@@ -12,6 +12,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 @EnableConfigurationProperties({
     JwtProperties.class,
     InsightExecutionProperties.class,
+    de.savas.businessinsightapi.application.insight.InsightSchedulerProperties.class,
     SecurityHardeningProperties.class
 })
 public class BusinessInsightApiApplication {

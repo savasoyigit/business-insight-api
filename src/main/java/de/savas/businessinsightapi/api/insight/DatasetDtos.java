@@ -15,14 +15,18 @@ public class DatasetDtos {
     public record CreateDatasetRequest(
             @NotBlank String name,
             @NotNull Long queryTemplateId,
-            JsonNode defaultParams
+            JsonNode defaultParams,
+            /** Optional cron for automatic snapshots, e.g. "0 6 * * *" or "@hourly". */
+            String refreshCron
     ) {
     }
 
     public record UpdateDatasetRequest(
             String name,
             Long queryTemplateId,
-            JsonNode defaultParams
+            JsonNode defaultParams,
+            /** null keeps the schedule, "" removes it. */
+            String refreshCron
     ) {
     }
 
@@ -37,7 +41,10 @@ public class DatasetDtos {
             Long queryTemplateId,
             JsonNode defaultParams,
             String createdBy,
-            OffsetDateTime createdAt
+            OffsetDateTime createdAt,
+            String refreshCron,
+            OffsetDateTime nextRefreshAt,
+            OffsetDateTime lastRefreshAt
     ) {
         public static DatasetResponse from(Dataset dataset) {
             return new DatasetResponse(
@@ -46,7 +53,10 @@ public class DatasetDtos {
                     dataset.getQueryTemplateId(),
                     dataset.getDefaultParams(),
                     dataset.getCreatedBy(),
-                    dataset.getCreatedAt()
+                    dataset.getCreatedAt(),
+                    dataset.getRefreshCron(),
+                    dataset.getNextRefreshAt(),
+                    dataset.getLastRefreshAt()
             );
         }
     }

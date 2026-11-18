@@ -73,6 +73,23 @@ public class QueryRun {
     public String getQueryHash() { return queryHash; }
     public String getErrorType() { return errorType; }
 
+    /** A run accepted for asynchronous execution. */
+    public static QueryRun queued(Long organizationId, Long queryTemplateId, Long dataSourceId, String requestedBy) {
+        QueryRun run = new QueryRun(organizationId, queryTemplateId, dataSourceId, requestedBy);
+        run.status = QueryRunStatus.QUEUED;
+        return run;
+    }
+
+    /** A worker picked the run up; startedAt now reflects the actual start. */
+    public void markRunning() {
+        this.status = QueryRunStatus.RUNNING;
+        this.startedAt = OffsetDateTime.now();
+    }
+
+    public boolean isFinished() {
+        return status == QueryRunStatus.SUCCESS || status == QueryRunStatus.FAILED;
+    }
+
     public void setQueryHash(String queryHash) {
         this.queryHash = queryHash;
     }

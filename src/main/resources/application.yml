@@ -38,6 +38,14 @@ app:
       max-rows: 5000
       snapshot-rows: 500
       query-timeout-seconds: 30
+      async-threads: 4
+      async-queue-capacity: 100
+      snapshot-retention: 50
+    scheduler:
+      enabled: true
+      poll-interval: 30s
+      zone: ${INSIGHT_SCHEDULER_ZONE:UTC}
+      min-interval-minutes: 5
   security:
     # Base64-encoded 32-byte key for encrypting datasource passwords (AES-256-GCM). Empty disables encrypted passwords.
     # Generate one with: openssl rand -base64 32

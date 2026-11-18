@@ -87,42 +87,90 @@ public class QueryExecutionService {
     }
 
     public ExecutionResult execute(Long orgId, Long queryTemplateId, Map<String, Object> params, boolean snapshot) {
-        return executeInternal(orgId, queryTemplateId, params, snapshot, null);
+        PreparedRun prepared = prepare(orgId, queryTemplateId, params, snapshot, null, currentUsername(), false);
+        return runPrepared(prepared, true);
     }
 
     public Page<QueryRun> listRuns(Long orgId, Pageable pageable) {
         return queryRunRepo.findAllByOrganizationId(orgId, pageable);
     }
 
+    /** A single run with the snapshot it produced, if any. */
+    public RunDetails getRun(Long orgId, Long runId) {
+        QueryRun run = queryRunRepo.findByIdAndOrganizationId(runId, orgId)
+                .orElseThrow(() -> new BadRequestException("QueryRun not found"));
+        Long snapshotId = run.getStatus() == QueryRunStatus.SUCCESS
+                ? snapshotRepo.findTopByOrganizationIdAndQueryRunId(orgId, runId).map(DatasetSnapshot::getId).orElse(null)
+                : null;
+        return new RunDetails(run, snapshotId);
+    }
+
     public ExecutionResult executeForDataset(Long orgId, Dataset dataset, Map<String, Object> params) {
+        return runPrepared(prepareForDataset(orgId, dataset, params, currentUsername(), false), true);
+    }
+
+    PreparedRun prepareForDataset(Long orgId, Dataset dataset, Map<String, Object> params, String requestedBy, boolean queued) {
         Map<String, Object> mergedParams = new LinkedHashMap<>(defaultParamsAsMap(dataset));
         if (params != null) {
             mergedParams.putAll(params);
         }
-        return executeInternal(orgId, dataset.getQueryTemplateId(), mergedParams, true, dataset.getId());
+        return prepare(orgId, dataset.getQueryTemplateId(), mergedParams, true, dataset.getId(), requestedBy, queued);
     }
 
-    private ExecutionResult executeInternal(Long orgId,
-                                            Long queryTemplateId,
-                                            Map<String, Object> params,
-                                            boolean snapshot,
-                                            Long datasetId) {
+    /**
+     * Validates in the caller's thread (so bad input is a 400 right away, even for async runs)
+     * and records the run as RUNNING, or QUEUED when a worker will execute it later.
+     */
+    PreparedRun prepare(Long orgId,
+                        Long queryTemplateId,
+                        Map<String, Object> params,
+                        boolean snapshot,
+                        Long datasetId,
+                        String requestedBy,
+                        boolean queued) {
         LoadedExecutionContext context = loadContext(orgId, queryTemplateId);
         ValidationResult validation = validateInternal(context.queryTemplate(), context.dataSource(), params);
         if (!validation.valid()) {
             throw new BadRequestException(String.join("; ", validation.errors()));
         }
 
-        String requestedBy = currentUsername();
-        QueryRun run = new QueryRun(orgId, queryTemplateId, context.dataSource().getId(), requestedBy);
+        Long dataSourceId = context.dataSource().getId();
+        QueryRun run = queued
+                ? QueryRun.queued(orgId, queryTemplateId, dataSourceId, requestedBy)
+                : new QueryRun(orgId, queryTemplateId, dataSourceId, requestedBy);
         run.setQueryHash(queryHash(context.queryTemplate().getSqlText()));
         run = queryRunRepo.save(run);
+        return new PreparedRun(run.getId(), orgId, queryTemplateId, params, snapshot, datasetId, requestedBy, context, validation);
+    }
+
+    /** Marks a prepared run as failed without executing it (e.g. the worker queue was full). */
+    void abandon(PreparedRun prepared, String errorType, String message) {
+        queryRunRepo.findById(prepared.runId()).ifPresent(run -> {
+            run.markFailed(message, errorType, 0);
+            queryRunRepo.save(run);
+        });
+    }
+
+    /**
+     * Executes a prepared run against the target database. With {@code rethrow} the caller gets a 400 on failure
+     * (synchronous API); without it the failure is only recorded on the run (asynchronous workers).
+     */
+    ExecutionResult runPrepared(PreparedRun prepared, boolean rethrow) {
+        Long orgId = prepared.orgId();
+        Long queryTemplateId = prepared.queryTemplateId();
+        LoadedExecutionContext context = prepared.context();
+        QueryRun run = queryRunRepo.findById(prepared.runId())
+                .orElseThrow(() -> new IllegalStateException("QueryRun " + prepared.runId() + " disappeared"));
+        if (run.getStatus() == QueryRunStatus.QUEUED) {
+            run.markRunning();
+            run = queryRunRepo.save(run);
+        }
 
         Timer.Sample executionTimer = Timer.start(meterRegistry);
         Instant start = Instant.now();
         try {
             String sql = sqlValidator.applyLimitIfMissing(context.queryTemplate().getSqlText(), properties.maxRows(), context.dataSource().getType());
-            MapSqlParameterSource parameterSource = buildSqlParameters(context.queryTemplate(), validation.allowedParams(), params);
+            MapSqlParameterSource parameterSource = buildSqlParameters(context.queryTemplate(), prepared.validation().allowedParams(), prepared.params());
 
             List<Map<String, Object>> rows = jdbcConnectionProvider.readOnly(context.dataSource(), jdbcTemplate ->
                     new NamedParameterJdbcTemplate(jdbcTemplate).query(sql, parameterSource, new ColumnMapRowMapper()));
@@ -130,16 +178,20 @@ public class QueryExecutionService {
             long durationMs = Duration.between(start, Instant.now()).toMillis();
             run.markSuccess(rows.size(), durationMs);
             queryRunRepo.save(run);
-                meterRegistry.counter("insight.query.execute.success").increment();
-                log.info("Query execution success runId={} orgId={} queryTemplateId={} rows={} durationMs={} dataSourceId={}",
+            meterRegistry.counter("insight.query.execute.success").increment();
+            log.info("Query execution success runId={} orgId={} queryTemplateId={} rows={} durationMs={} dataSourceId={}",
                     run.getId(), orgId, queryTemplateId, rows.size(), durationMs, context.dataSource().getId());
 
             DatasetSnapshot savedSnapshot = null;
-            if (snapshot) {
+            if (prepared.snapshot()) {
                 JsonNode json = toJson(rows.stream().limit(properties.snapshotRows()).toList());
+                Long datasetId = prepared.datasetId();
                 savedSnapshot = datasetId == null
                         ? snapshotRepo.save(new DatasetSnapshot(orgId, run.getId(), json))
                         : snapshotRepo.save(new DatasetSnapshot(orgId, run.getId(), datasetId, json));
+                if (datasetId != null && properties.snapshotRetention() > 0) {
+                    snapshotRepo.deleteAllButNewest(orgId, datasetId, properties.snapshotRetention());
+                }
             }
 
             return new ExecutionResult(
@@ -147,7 +199,7 @@ public class QueryExecutionService {
                     run.getStatus(),
                     rows.size(),
                     durationMs,
-                    requestedBy,
+                    prepared.requestedBy(),
                     context.dataSource().getId(),
                     queryTemplateId,
                     savedSnapshot == null ? null : savedSnapshot.getId(),
@@ -162,12 +214,31 @@ public class QueryExecutionService {
             meterRegistry.counter("insight.query.execute.failed", "errorType", errorType).increment();
             log.warn("Query execution failed runId={} orgId={} queryTemplateId={} errorType={} durationMs={} message={}",
                     run.getId(), orgId, queryTemplateId, errorType, durationMs, safeMessage(ex));
-            throw new BadRequestException("Query execution failed: " + safeMessage(ex));
+            if (rethrow) {
+                throw new BadRequestException("Query execution failed: " + safeMessage(ex));
+            }
+            return new ExecutionResult(run.getId(), run.getStatus(), 0, durationMs, prepared.requestedBy(),
+                    context.dataSource().getId(), queryTemplateId, null, run.getQueryHash(), errorType);
         } finally {
             executionTimer.stop(Timer.builder("insight.query.execute.duration")
                     .description("Duration of query executions")
                     .register(meterRegistry));
         }
+    }
+
+    /** Everything a worker needs to execute a run that was validated and recorded earlier. */
+    record PreparedRun(Long runId,
+                       Long orgId,
+                       Long queryTemplateId,
+                       Map<String, Object> params,
+                       boolean snapshot,
+                       Long datasetId,
+                       String requestedBy,
+                       LoadedExecutionContext context,
+                       ValidationResult validation) {
+    }
+
+    public record RunDetails(QueryRun run, Long snapshotId) {
     }
 
     public ValidationResult validate(Long orgId, Long queryTemplateId, Map<String, Object> params) {
