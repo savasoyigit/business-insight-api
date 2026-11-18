@@ -12,7 +12,7 @@ import { ApiError } from './types';
 import { aggregate } from '../lib/render';
 import { detectParams, guardSql } from '../lib/sql';
 
-const STORAGE_KEY = 'insight-studio.demo.v4';
+const STORAGE_KEY = 'insight-studio.demo.v5';
 export const DEMO_ORG = 1;
 
 export const ALL_PERMISSIONS: [string, string][] = [
@@ -163,9 +163,9 @@ function seedState(): DemoState {
       { id: 3, name: 'VIEWER', description: 'Read-only access to BI assets', permissionCodes: [...READ_PERMS].sort() },
     ],
     users: [
-      { id: 1, username: 'admin', email: 'admin@local.dev', roleNames: ['ADMIN'], organizationIds: [1, 2] },
-      { id: 2, username: 'analyst', email: 'analyst@local.dev', roleNames: ['ANALYST'], organizationIds: [1] },
-      { id: 3, username: 'viewer', email: 'viewer@local.dev', roleNames: ['VIEWER'], organizationIds: [1] },
+      { id: 1, username: 'admin', email: 'admin@example.com', roleNames: ['ADMIN'], organizationIds: [1, 2] },
+      { id: 2, username: 'analyst', email: 'analyst@example.com', roleNames: ['ANALYST'], organizationIds: [1] },
+      { id: 3, username: 'viewer', email: 'viewer@example.com', roleNames: ['VIEWER'], organizationIds: [1] },
     ],
     organizations: [
       { id: 1, name: 'Ember & Bean Roasters', createdAt: iso(60 * 24 * 30) },
