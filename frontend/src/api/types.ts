@@ -213,6 +213,19 @@ export interface UserRoles {
   username: string;
   email: string;
   roleNames: string[];
+  organizationIds: number[];
+}
+
+export interface Organization {
+  id: number;
+  name: string;
+  createdAt?: string;
+}
+
+export interface Me {
+  username: string;
+  permissions: string[];
+  organizations: Organization[];
 }
 
 export interface AuditLog {
@@ -231,6 +244,7 @@ export interface Api {
   login(username: string, password: string): Promise<string>;
   register(email: string, username: string, password: string): Promise<void>;
   health(): Promise<boolean>;
+  me(): Promise<Me>;
 
   listDataSources(org: number, p?: PageRequest): Promise<Page<DataSource>>;
   createDataSource(org: number, body: DataSourceInput): Promise<DataSource>;
@@ -272,6 +286,9 @@ export interface Api {
   listUsers(query?: string): Promise<UserRoles[]>;
   replaceUserRoles(id: number, roleNames: string[]): Promise<UserRoles>;
   listAuditLogs(p?: PageRequest): Promise<Page<AuditLog>>;
+  listOrganizations(): Promise<Organization[]>;
+  createOrganization(name: string): Promise<Organization>;
+  replaceUserOrganizations(id: number, organizationIds: number[]): Promise<UserRoles>;
 }
 
 export class ApiError extends Error {

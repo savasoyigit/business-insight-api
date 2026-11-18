@@ -11,6 +11,8 @@ import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
@@ -58,6 +60,18 @@ public class GlobalExceptionHandler {
             HttpServletRequest request
     ) {
         return buildError(HttpStatus.BAD_REQUEST, "Malformed request body", request.getRequestURI());
+    }
+
+    // 400 - Missing or mistyped query/path parameters (e.g. ?snapshotId=abc)
+    @ExceptionHandler({MissingServletRequestParameterException.class, MethodArgumentTypeMismatchException.class})
+    public ResponseEntity<ApiError> handleBadParameter(
+            Exception ex,
+            HttpServletRequest request
+    ) {
+        String message = ex instanceof MissingServletRequestParameterException missing
+                ? missing.getParameterName() + " is required"
+                : ((MethodArgumentTypeMismatchException) ex).getName() + " has an invalid value";
+        return buildError(HttpStatus.BAD_REQUEST, message, request.getRequestURI());
     }
 
     // 400 - Our custom bad request

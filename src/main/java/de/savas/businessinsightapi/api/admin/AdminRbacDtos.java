@@ -42,7 +42,8 @@ public class AdminRbacDtos {
             Long id,
             String username,
             String email,
-            List<String> roleNames
+            List<String> roleNames,
+            List<Long> organizationIds
     ) {
         public static UserRoleResponse from(User user) {
             List<String> roleNames = user.getRoles().stream()
@@ -50,7 +51,9 @@ public class AdminRbacDtos {
                     .sorted()
                     .toList();
 
-            return new UserRoleResponse(user.getId(), user.getUsername(), user.getEmail(), roleNames);
+            List<Long> organizationIds = user.getOrganizationIds().stream().sorted().toList();
+
+            return new UserRoleResponse(user.getId(), user.getUsername(), user.getEmail(), roleNames, organizationIds);
         }
     }
 
@@ -89,6 +92,25 @@ public class AdminRbacDtos {
 
     public record ReplaceRolePermissionsRequest(
             @NotEmpty List<String> permissionCodes
+    ) {}
+
+    public record OrganizationResponse(
+            Long id,
+            String name,
+            OffsetDateTime createdAt
+    ) {
+        public static OrganizationResponse from(de.savas.businessinsightapi.domain.organization.Organization organization) {
+            return new OrganizationResponse(organization.getId(), organization.getName(), organization.getCreatedAt());
+        }
+    }
+
+    public record CreateOrganizationRequest(
+            @NotBlank String name
+    ) {}
+
+    /** An empty list removes the user from every organization. */
+    public record ReplaceUserOrganizationsRequest(
+            @jakarta.validation.constraints.NotNull List<Long> organizationIds
     ) {}
 
     public record ReplaceUserRolesRequest(

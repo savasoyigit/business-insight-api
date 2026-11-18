@@ -42,6 +42,12 @@ public class User {
     )
     private Set<Role> roles = new HashSet<>();
 
+    /** Organizations this user may work in (tenant isolation). */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "organization_member", joinColumns = @JoinColumn(name = "user_id"))
+    @Column(name = "organization_id", nullable = false)
+    private Set<Long> organizationIds = new HashSet<>();
+
 
     protected User() {}
 
@@ -68,6 +74,19 @@ public class User {
 
     public void changePasswordHash(String passwordHash) {
         this.passwordHash = passwordHash;
+    }
+
+    public Set<Long> getOrganizationIds() {
+        return organizationIds;
+    }
+
+    public boolean isMemberOf(Long organizationId) {
+        return organizationIds.contains(organizationId);
+    }
+
+    public void replaceOrganizations(Set<Long> organizationIds) {
+        this.organizationIds.clear();
+        this.organizationIds.addAll(organizationIds);
     }
 
     public void replaceRoles(Set<Role> roles) {

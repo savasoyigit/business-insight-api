@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
 import type { Api } from '../api/types';
 import { HttpApi } from '../api/http';
-import { DemoApi, DEMO_ORG } from '../api/demo';
+import { DemoApi } from '../api/demo';
 
 export type Mode = 'live' | 'demo';
 export const DEMO_ONLY = import.meta.env.VITE_DEMO_ONLY === 'true';
@@ -18,7 +18,11 @@ interface SessionValue {
   token: string | null;
   username: string | null;
   perms: Set<string>;
+  /** Organizations the caller is a member of (JWT `orgs` claim). */
+  orgIds: number[];
+  /** Currently selected organization; 0 when the user has none. */
   orgId: number;
+  hasOrg: boolean;
   can: (perm: string) => boolean;
   setOrgId: (id: number) => void;
   signIn: (mode: Mode, username: string, password: string) => Promise<void>;
@@ -43,7 +47,7 @@ function writeStored(s: StoredSession | null) {
   } catch { /* storage unavailable: session lives in memory only */ }
 }
 
-export function decodeJwt(token: string): { sub?: string; perms?: string[]; exp?: number } {
+export function decodeJwt(token: string): { sub?: string; perms?: string[]; orgs?: number[]; exp?: number } {
   try {
     const payload = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
     return JSON.parse(atob(payload.padEnd(payload.length + ((4 - (payload.length % 4)) % 4), '=')));
@@ -54,7 +58,9 @@ function validStored(): StoredSession | null {
   const s = readStored();
   if (!s) return null;
   if (DEMO_ONLY && s.mode !== 'demo') return null;
-  const { exp } = decodeJwt(s.token);
+  const { exp, orgs } = decodeJwt(s.token);
+  // Tokens issued before organization membership existed carry no `orgs` claim: sign in again.
+  if (!Array.isArray(orgs)) return null;
   return exp && exp * 1000 < Date.now() ? null : s;
 }
 
@@ -83,13 +89,17 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<SessionValue>(() => {
     const perms = new Set(claims.perms ?? []);
+    const orgIds = (claims.orgs ?? []).map(Number);
+    const orgId = session && orgIds.includes(session.orgId) ? session.orgId : orgIds[0] ?? 0;
     return {
       api,
       mode: session?.mode ?? (DEMO_ONLY ? 'demo' : 'live'),
       token: session?.token ?? null,
       username: claims.sub ?? null,
       perms,
-      orgId: session?.orgId ?? 1,
+      orgIds,
+      orgId,
+      hasOrg: orgId > 0,
       can: (p) => perms.has(p),
       setOrgId: (orgId) => {
         if (!session) return;
@@ -100,7 +110,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       signIn: async (mode, username, password) => {
         const client: Api = mode === 'demo' ? new DemoApi() : new HttpApi(() => null, () => {});
         const token = await client.login(username, password);
-        const next = { mode, token, orgId: mode === 'demo' ? DEMO_ORG : session?.orgId ?? 1 };
+        const orgs = (decodeJwt(token).orgs ?? []).map(Number);
+        const keep = session && orgs.includes(session.orgId) ? session.orgId : undefined;
+        const next = { mode, token, orgId: keep ?? orgs[0] ?? 0 };
         writeStored(next);
         setSession(next);
       },

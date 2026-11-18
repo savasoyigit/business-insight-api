@@ -47,6 +47,7 @@ public class JwtService {
                 .subject(user.getUsername())
                 .issuer(props.issuer())
                 .claim("perms", permissions)
+                .claim("orgs", user.getOrganizationIds().stream().sorted().toList())
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(exp))
                 .signWith(key)
@@ -63,6 +64,17 @@ public class JwtService {
             return collection.stream()
                     .filter(Objects::nonNull)
                     .map(Object::toString)
+                    .collect(Collectors.toSet());
+        }
+        return Set.of();
+    }
+
+    public Set<Long> extractOrganizationIds(String token) {
+        Object orgs = parseClaims(token).get("orgs");
+        if (orgs instanceof Collection<?> collection) {
+            return collection.stream()
+                    .filter(Objects::nonNull)
+                    .map(value -> value instanceof Number n ? n.longValue() : Long.parseLong(value.toString()))
                     .collect(Collectors.toSet());
         }
         return Set.of();

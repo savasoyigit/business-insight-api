@@ -1,6 +1,7 @@
 # Business Insight API
 
 [![Live demo](https://img.shields.io/badge/live%20demo-Insight%20Studio-f2a93b)](https://savasoyigit.github.io/business-insight-api/)
+[![CI](https://github.com/savasoyigit/business-insight-api/actions/workflows/ci.yml/badge.svg)](https://github.com/savasoyigit/business-insight-api/actions/workflows/ci.yml)
 [![Deploy demo](https://github.com/savasoyigit/business-insight-api/actions/workflows/deploy-demo.yml/badge.svg)](https://github.com/savasoyigit/business-insight-api/actions/workflows/deploy-demo.yml)
 
 Spring Boot backend for external datasource routing, SQL-based insight execution, and BI asset management,
@@ -92,7 +93,7 @@ Pages must be enabled once under **Settings → Pages → Source: GitHub Actions
 - `infrastructure`: security, bootstrap, config
 - `common`: shared error handling
 - `frontend/`: Insight Studio web UI (see [frontend/README.md](frontend/README.md))
-- `.github/workflows/`: GitHub Pages deployment of the demo
+- `.github/workflows/`: CI (tests + frontend build) and GitHub Pages deployment of the demo
 
 ## Core Concepts
 
@@ -250,6 +251,22 @@ Layout example:
 
 All endpoints except `/api/auth/**` require authentication.
 
+### Organizations (tenant isolation)
+
+Every BI asset belongs to an organization, and users only reach the organizations they are members of.
+
+- Memberships are stored in `organization_member` and travel in the JWT `orgs` claim, next to `perms`.
+- Every `/api/insight/**` request must carry `?orgId=`. `OrganizationAccessInterceptor` checks it centrally,
+  so a new endpoint cannot skip the check:
+  - missing or non-numeric `orgId` returns `400`
+  - an organization the caller is not a member of returns `403`
+- Admins manage organizations and memberships with the `RBAC_ORG_MANAGE` permission. The creator of an organization
+  becomes its first member, and every membership change is audited.
+- Like permissions, membership changes take effect on the user's next sign-in.
+- `GET /api/me` returns the caller's username, permissions and organizations.
+- Upgrade note: migration `V8` makes existing users members of all existing organizations, so nothing breaks
+  on upgrade. Narrow memberships afterwards via `PUT /api/admin/rbac/users/{id}/organizations`.
+
 Method security is enabled with `@EnableMethodSecurity`.
 
 Main permission groups:
@@ -260,7 +277,7 @@ Main permission groups:
 - dataset: `INSIGHT_DATASET_*`
 - chart: `INSIGHT_CHART_*`
 - dashboard: `INSIGHT_DASHBOARD_*`
-- admin RBAC: `RBAC_*`
+- admin RBAC: `RBAC_*` (organizations: `RBAC_ORG_MANAGE`)
 
 Phase 5 hardening:
 
@@ -282,9 +299,9 @@ All errors use the same JSON shape (`timestamp`, `status`, `error`, `message`, `
 
 | Status | When |
 | --- | --- |
-| `400` | Validation errors, `BadRequestException`, malformed or unreadable request bodies |
+| `400` | Validation errors, `BadRequestException`, malformed request bodies, missing or invalid parameters |
 | `401` | Missing, malformed or expired token; invalid credentials; locked account |
-| `403` | Authenticated, but the token lacks the required permission (`@PreAuthorize` or the filter chain) |
+| `403` | Authenticated, but missing the required permission or membership of the requested organization |
 | `409` | Unique constraint violations, such as a duplicate name within an organization or a taken username |
 | `429` | Login rate limit exceeded |
 | `500` | Unexpected errors. The response stays generic, and the full exception is logged with the request's correlation ID. |
@@ -343,6 +360,9 @@ directions, so JSON objects in those fields work over HTTP.
 - `PUT /api/admin/rbac/roles/{id}/permissions`
 - `GET /api/admin/rbac/users`
 - `PUT /api/admin/rbac/users/{id}/roles`
+- `GET /api/admin/rbac/organizations`
+- `POST /api/admin/rbac/organizations`
+- `PUT /api/admin/rbac/users/{id}/organizations`
 - `GET /api/admin/rbac/audit-logs` (paged)
 
 ### Chart
@@ -444,6 +464,33 @@ Recommended execution order in Postman:
 4. Dataset snapshot is generated.
 5. Chart is created against the dataset.
 6. Dashboard is created with one or more chart widgets.
+
+### Current User
+
+- `GET /api/me`: username, permissions and organizations of the caller
+
+## Tests
+
+Integration tests boot the full application (security filter chain included) against a real PostgreSQL database.
+They cover authentication and status codes, tenant isolation, RBAC, membership administration and auditing,
+JSON fields, SQL guardrails, and the whole pipeline from data source to rendered chart and dashboard.
+
+```bash
+# a database for tests (any PostgreSQL works; defaults shown)
+createdb businessinsight_test
+
+export TEST_DB_URL=jdbc:postgresql://localhost:5432/businessinsight_test   # default
+export TEST_DB_USER=app                                                    # default
+export TEST_DB_PASSWORD=app   # also enables the live pipeline test (env:TEST_DB_PASSWORD)
+
+./mvnw verify
+```
+
+The live pipeline test uses the test database itself as the external data source and is skipped when
+`TEST_DB_PASSWORD` is not set.
+
+CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs these tests on every push and pull request,
+using a PostgreSQL service container, and also builds the frontend.
 
 ## Build Check
 
