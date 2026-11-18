@@ -1,10 +1,12 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
 import type { Api } from '../api/types';
 import { HttpApi } from '../api/http';
-import { DemoApi } from '../api/demo';
+import { DemoApi } from '@demo';
 
 export type Mode = 'live' | 'demo';
-export const DEMO_ONLY = import.meta.env.VITE_DEMO_ONLY === 'true';
+/** Build-time constant from vite.config.ts: is the demo sandbox in this bundle? */
+export const DEMO_AVAILABLE = import.meta.env.VITE_DEMO_AVAILABLE === 'true';
+export const DEMO_ONLY = DEMO_AVAILABLE && import.meta.env.VITE_DEMO_ONLY === 'true';
 
 interface StoredSession {
   mode: Mode;
@@ -58,6 +60,7 @@ function validStored(): StoredSession | null {
   const s = readStored();
   if (!s) return null;
   if (DEMO_ONLY && s.mode !== 'demo') return null;
+  if (!DEMO_AVAILABLE && s.mode === 'demo') return null;
   const { exp, orgs } = decodeJwt(s.token);
   // Tokens issued before organization membership existed carry no `orgs` claim: sign in again.
   if (!Array.isArray(orgs)) return null;

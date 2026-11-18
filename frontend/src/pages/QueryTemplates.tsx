@@ -3,7 +3,7 @@ import type { FieldDef, Json, ParamDef, QueryTemplate, RunDetails, ValidateResul
 import { isFinished, pollRun } from '../lib/runs';
 import { useSession } from '../auth/session';
 import { useAsync } from '../lib/hooks';
-import { detectParams, guardSql } from '../api/demo';
+import { detectParams, guardSql } from '../lib/sql';
 import { Badge, Empty, ErrorNote, Field, Modal, PageHeader, Pager, Spinner, parseJson, useToast } from '../components/ui';
 import { SqlView } from '../components/SqlView';
 

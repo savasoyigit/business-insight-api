@@ -44,6 +44,17 @@ npm run build:demo     # dist/ only offers the demo sandbox
 
 `dist/` uses relative paths and hash routing, so it can go straight to GitHub Pages, Netlify, Vercel or any static host.
 
+What each build contains:
+
+| Command | Live API | Demo sandbox |
+| --- | --- | --- |
+| `npm run dev` | ✓ | ✓ |
+| `npm run build` | ✓ | – (set `VITE_ENABLE_DEMO=true` to include it) |
+| `npm run build:demo` | – | ✓ only |
+
+The production build replaces the demo module with a stub at build time, so the mock API and its sample data are
+not shipped. Fonts are self-hosted (`@fontsource`), so the app makes no requests to third-party hosts.
+
 The `Deploy demo to GitHub Pages` workflow (`.github/workflows/deploy-demo.yml`) does this automatically on every push to
 `master` that touches `frontend/`, and can also be run by hand from the Actions tab.
 

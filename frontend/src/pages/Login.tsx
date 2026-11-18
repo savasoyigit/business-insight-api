@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { DEMO_ONLY, useSession, type Mode } from '../auth/session';
-import { DEMO_USERS } from '../api/demo';
+import { DEMO_AVAILABLE, DEMO_ONLY, useSession, type Mode } from '../auth/session';
+import { DEMO_USERS } from '@demo';
 import { HttpApi } from '../api/http';
 
 const FLOW = ['DataSource', 'QueryTemplate', 'Dataset', 'Snapshot', 'Chart', 'Dashboard'];
@@ -73,14 +73,14 @@ export function Login() {
       </section>
 
       <section className="login-panel">
-        {!DEMO_ONLY && (
+        {DEMO_AVAILABLE && !DEMO_ONLY && (
           <div className="seg" role="tablist">
             <button role="tab" aria-selected={tab === 'live'} className={tab === 'live' ? 'on' : ''} onClick={() => setTab('live')}>Live API</button>
             <button role="tab" aria-selected={tab === 'demo'} className={tab === 'demo' ? 'on' : ''} onClick={() => setTab('demo')}>Demo sandbox</button>
           </div>
         )}
 
-        {tab === 'live' ? (
+        {tab === 'live' || !DEMO_AVAILABLE ? (
           <form onSubmit={submit} className="login-form">
             <h2>{register ? 'Create an account' : 'Sign in'}</h2>
             <p className="muted small api-status">
