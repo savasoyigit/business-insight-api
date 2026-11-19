@@ -30,6 +30,7 @@ export const ALL_PERMISSIONS: [string, string][] = [
   ['RBAC_ROLE_MANAGE', 'Manage roles'], ['RBAC_PERMISSION_MANAGE', 'Manage permissions'],
   ['RBAC_USER_ROLE_ASSIGN', 'Assign roles to users'],
   ['RBAC_ORG_MANAGE', 'Manage organizations and memberships'],
+  ['OPS_METRICS_ACCESS', 'Read actuator metrics and info'],
 ];
 
 const READ_PERMS = ALL_PERMISSIONS.map(([c]) => c).filter((c) => c.endsWith('_READ'));

@@ -77,7 +77,9 @@ public class RbacSeeder implements ApplicationRunner {
                 perm("RBAC_ROLE_MANAGE", "Manage roles"),
                 perm("RBAC_PERMISSION_MANAGE", "Manage permissions"),
                 perm("RBAC_USER_ROLE_ASSIGN", "Assign roles to users"),
-                perm("RBAC_ORG_MANAGE", "Manage organizations and memberships")
+                perm("RBAC_ORG_MANAGE", "Manage organizations and memberships"),
+
+                perm("OPS_METRICS_ACCESS", "Read actuator metrics and info")
         );
 
         perms.forEach(p ->

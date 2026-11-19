@@ -123,6 +123,24 @@ public class GlobalExceptionHandler {
                 return buildError(HttpStatus.TOO_MANY_REQUESTS, ex.getMessage(), request.getRequestURI());
         }
 
+    // 404 - No handler or static resource for the path
+    @ExceptionHandler(org.springframework.web.servlet.resource.NoResourceFoundException.class)
+    public ResponseEntity<ApiError> handleNotFound(
+            org.springframework.web.servlet.resource.NoResourceFoundException ex,
+            HttpServletRequest request
+    ) {
+        return buildError(HttpStatus.NOT_FOUND, "Not found", request.getRequestURI());
+    }
+
+    // 405 - Path exists, method does not
+    @ExceptionHandler(org.springframework.web.HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<ApiError> handleMethodNotAllowed(
+            org.springframework.web.HttpRequestMethodNotSupportedException ex,
+            HttpServletRequest request
+    ) {
+        return buildError(HttpStatus.METHOD_NOT_ALLOWED, ex.getMethod() + " is not supported here", request.getRequestURI());
+    }
+
     // 500 - Fallback (don’t leak details)
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiError> handleGeneric(

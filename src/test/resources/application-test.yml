@@ -21,6 +21,8 @@ app:
     scheduler:
       # Tests drive DatasetRefreshScheduler#refreshDueDatasets directly.
       enabled: false
+  metrics:
+    scrape-token: integration-test-scrape-token-0123456789
   security:
     secrets-key: q83vEjRWeJq83vEjRWeJq83vEjRWeJq83vEjRWeJq80=
     jwt:
