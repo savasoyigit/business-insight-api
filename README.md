@@ -21,7 +21,7 @@ needed. Sign in as `admin`, `analyst` or `viewer` to see the UI change with the 
 - **Safe SQL**: `SELECT` only, checked by a SQL parser, and run in read-only transactions that are always rolled back.
 - **Protected credentials**: datasource passwords are encrypted at rest and never returned.
 - **Async and scheduled runs**: queued queries and cron-based dataset refresh.
-- **Observability**: correlation IDs, Micrometer metrics, Prometheus endpoint.
+- **Observability**: correlation IDs, Micrometer metrics and a Prometheus endpoint, behind their own permission.
 
 ## Setup
 
@@ -39,7 +39,8 @@ cd frontend && npm install && npm run dev              # UI on http://localhost:
 ```
 
 Sign in as `admin` with your `ADMIN_PASSWORD`. For production, run with `SPRING_PROFILES_ACTIVE=prod`, and behind a
-reverse proxy set `SERVER_FORWARD_HEADERS_STRATEGY=native`. All other settings are in
+reverse proxy set `SERVER_FORWARD_HEADERS_STRATEGY=native`. Metrics need the `OPS_METRICS_ACCESS` permission; a
+Prometheus scraper can use `METRICS_SCRAPE_TOKEN` as its bearer token instead. All other settings are in
 [`application.yml`](src/main/resources/application.yml).
 
 ## Usage
