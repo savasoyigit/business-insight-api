@@ -77,7 +77,8 @@ public class DataSourceConnectionPolicy {
         try {
             addresses = InetAddress.getAllByName(host.trim());
         } catch (UnknownHostException e) {
-            throw new BadRequestException("Unknown host: " + host.trim());
+            // Same message as any other connection failure: naming the cause would reveal which internal names exist.
+            throw new BadRequestException("Could not connect to the database server");
         }
         for (InetAddress address : addresses) {
             assertAllowedAddress(address);

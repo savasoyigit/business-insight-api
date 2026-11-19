@@ -18,7 +18,8 @@ needed. Sign in as `admin`, `analyst` or `viewer` to see the UI change with the 
 ## Features
 
 - **Multi-tenant with RBAC**: users only reach their own organizations; fine-grained permissions with an audit trail.
-- **Safe SQL**: `SELECT` only, checked by a SQL parser, and run in read-only transactions that are always rolled back.
+- **Safe SQL**: `SELECT` only, checked by a SQL parser, no functions that reach server files or other servers, and run in
+  read-only transactions that are always rolled back.
 - **Protected credentials**: datasource passwords are encrypted at rest and never returned.
 - **Async and scheduled runs**: queued queries and cron-based dataset refresh.
 - **Observability**: correlation IDs, Micrometer metrics and a Prometheus endpoint, behind their own permission.

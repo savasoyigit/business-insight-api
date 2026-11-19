@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
  * Datasource fields are written by organization users. They must not be able to read the server's own secrets,
@@ -143,5 +144,67 @@ class DataSourceTargetSecurityTest extends IntegrationTestSupport {
         test = post(q("/api/insight/data-sources/" + id + "/test"), token, null);
         assertThat(test.body().get("ok").asBoolean()).isFalse();
         assertThat(test.body().get("error").asString()).contains("not allowed");
+    }
+
+    @Test
+    void connectionFailuresOnlyNameABroadCategory() throws Exception {
+        long id = create();
+        String url = q("/api/insight/data-sources/" + id + "/test");
+        String expected = "Could not connect to the database server";
+
+        // Unknown name and closed port used to give different driver messages: a scanner for internal hosts and ports.
+        jdbc.update("update data_source set host = 'no-such-host.invalid', secret_ref = 'env:PATH_IS_NOT_USED' where id = ?", id);
+        jdbc.update("update data_source set secret_ref = 'env:DS_SECRET_X' where id = ?", id);
+        assertThat(post(url, token, null).body().get("error").asString()).isEqualTo(expected);
+
+        jdbc.update("update data_source set host = 'localhost', port = 1 where id = ?", id);
+        String closedPort = post(url, token, null).body().get("error").asString();
+        // DS_SECRET_X is not set, so the secret check may answer first; either way no driver detail comes through.
+        assertThat(closedPort).isIn(expected, "Datasource secret is not available on this server");
+        assertThat(closedPort).doesNotContainIgnoringCase("refused").doesNotContain("localhost");
+    }
+
+    @Test
+    void queryExecutionHidesDriverDetailsToo() throws Exception {
+        assumeTrue(System.getenv("DS_SECRET_TEST_DB") != null, "DS_SECRET_TEST_DB not set");
+        var ds = post(q("/api/insight/data-sources"), token, Map.of("name", unique("closed"), "type", "POSTGRES",
+                "host", "localhost", "port", 1, "databaseName", "businessinsight_test", "username", "app",
+                "secretRef", "env:DS_SECRET_TEST_DB"));
+        long dsId = ds.body().get("id").asLong();
+        long qtId = post(q("/api/insight/query-templates"), token, Map.of("dataSourceId", dsId, "name", unique("q"),
+                "sqlText", "select 1 as x")).body().get("id").asLong();
+
+        var exec = post(q("/api/insight/query-execution/execute"), token, Map.of("queryTemplateId", qtId, "params", Map.of()));
+        assertThat(exec.status()).isEqualTo(400);
+        assertThat(exec.body().get("message").asString())
+                .contains("Could not connect to the database server")
+                .doesNotContainIgnoringCase("refused");
+    }
+
+    @Test
+    void missingDatabaseIsReportedAfterAuthentication() throws Exception {
+        assumeTrue(System.getenv("DS_SECRET_TEST_DB") != null, "DS_SECRET_TEST_DB not set");
+        var ds = post(q("/api/insight/data-sources"), token, Map.of("name", unique("nodb"), "type", "POSTGRES",
+                "host", "localhost", "port", 5432, "databaseName", "no_such_db_42", "username", "app",
+                "secretRef", "env:DS_SECRET_TEST_DB"));
+        var test = post(q("/api/insight/data-sources/" + ds.body().get("id").asLong() + "/test"), token, null);
+        assertThat(test.body().get("error").asString()).isEqualTo("The database does not exist");
+    }
+
+    @Test
+    void forbiddenFunctionsAreRefusedOnSaveAndOnExecution() throws Exception {
+        long dsId = create();
+        var refused = post(q("/api/insight/query-templates"), token, Map.of("dataSourceId", dsId, "name", unique("bad"),
+                "sqlText", "select pg_read_file('/etc/passwd') as f"));
+        assertThat(refused.status()).isEqualTo(400);
+        assertThat(refused.text()).contains("pg_read_file() is not allowed");
+
+        // A template saved before the rule existed.
+        long qtId = post(q("/api/insight/query-templates"), token, Map.of("dataSourceId", dsId, "name", unique("old"),
+                "sqlText", "select 1 as x")).body().get("id").asLong();
+        jdbc.update("update query_template set sql_text = 'select pg_read_file(''/etc/passwd'') as f' where id = ?", qtId);
+        var exec = post(q("/api/insight/query-execution/execute"), token, Map.of("queryTemplateId", qtId, "params", Map.of()));
+        assertThat(exec.status()).isEqualTo(400);
+        assertThat(exec.text()).contains("pg_read_file() is not allowed");
     }
 }
