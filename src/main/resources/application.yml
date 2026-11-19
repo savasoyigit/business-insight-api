@@ -1,5 +1,8 @@
 server:
   port: 8080
+  # Behind a reverse proxy set this to "native": Tomcat then takes the client address from X-Forwarded-For,
+  # but only when the request comes from a trusted proxy (server.tomcat.remoteip.internal-proxies).
+  forward-headers-strategy: ${SERVER_FORWARD_HEADERS_STRATEGY:none}
 
 spring:
   datasource:
@@ -41,6 +44,13 @@ app:
       async-threads: 4
       async-queue-capacity: 100
       snapshot-retention: 50
+    connection:
+      # secretRef env:VAR may only name variables with this prefix (e.g. env:DS_SECRET_ERP), never JWT_SECRET & co.
+      env-secret-prefix: ${INSIGHT_ENV_SECRET_PREFIX:DS_SECRET_}
+      # Datasource hosts on loopback (localhost) are refused unless enabled, e.g. for local development.
+      allow-loopback: ${INSIGHT_ALLOW_LOOPBACK:false}
+      # Private networks (10/8, 172.16/12, 192.168/16, ...) are where company databases usually live.
+      allow-private-networks: ${INSIGHT_ALLOW_PRIVATE_NETWORKS:true}
     scheduler:
       enabled: true
       poll-interval: 30s

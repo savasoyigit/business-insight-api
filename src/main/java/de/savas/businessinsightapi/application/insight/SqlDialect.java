@@ -18,9 +18,19 @@ public interface SqlDialect {
     String getDriverClassName();
     
     /**
-     * Build JDBC connection URL from connection parameters
+     * Build the JDBC URL from connection parameters. Callers pass values validated by
+     * {@link DataSourceConnectionPolicy}; driver settings never go into the URL but into
+     * {@link #connectionProperties}, so the URL holds nothing a user could extend.
      */
     String buildJdbcUrl(String host, int port, String databaseName);
+
+    /**
+     * Fixed driver settings for every connection. Only the switches listed by the dialect are read from the
+     * datasource's options; anything else in options is ignored.
+     */
+    default java.util.Properties connectionProperties(com.fasterxml.jackson.databind.JsonNode options) {
+        return new java.util.Properties();
+    }
     
     /**
      * Statements run at the start of every query transaction to make it read-only and bounded.

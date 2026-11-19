@@ -70,6 +70,24 @@ public class MssqlDialect implements SqlDialect {
     
     @Override
     public String buildJdbcUrl(String host, int port, String databaseName) {
-        return "jdbc:sqlserver://%s:%d;databaseName=%s;encrypt=false;trustServerCertificate=true".formatted(host, port, databaseName);
+        return "jdbc:sqlserver://%s:%d;databaseName=%s".formatted(host, port, databaseName);
+    }
+
+    /**
+     * Connections are always encrypted and the server certificate is verified. A server without a trusted
+     * certificate can be allowed per datasource with {@code options: {"trustServerCertificate": true}}; the traffic
+     * stays encrypted, but the server's identity is then not checked.
+     */
+    @Override
+    public java.util.Properties connectionProperties(com.fasterxml.jackson.databind.JsonNode options) {
+        boolean trustServerCertificate = options != null
+                && options.path("trustServerCertificate").isBoolean()
+                && options.path("trustServerCertificate").booleanValue();
+        java.util.Properties props = new java.util.Properties();
+        props.setProperty("encrypt", "true");
+        props.setProperty("trustServerCertificate", String.valueOf(trustServerCertificate));
+        props.setProperty("loginTimeout", "10");
+        props.setProperty("applicationName", "business-insight-api");
+        return props;
     }
 }

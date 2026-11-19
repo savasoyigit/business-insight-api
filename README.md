@@ -51,6 +51,10 @@ is logged on every start.
 | `ADMIN_USERNAME`, `ADMIN_EMAIL`, `ADMIN_PASSWORD` | The seeded admin account. |
 | `CORS_ALLOWED_ORIGINS` | Browser origins allowed to call the API directly (default `http://localhost:5173`). |
 | `INSIGHT_SCHEDULER_ZONE` | Time zone for dataset refresh schedules (default `UTC`). |
+| `DS_SECRET_*` | Datasource passwords referenced as `secretRef: env:DS_SECRET_...`. Other variables cannot be referenced (prefix: `INSIGHT_ENV_SECRET_PREFIX`). |
+| `INSIGHT_ALLOW_LOOPBACK` | Allow datasources on `localhost` (default `false`; set `true` for local development). |
+| `INSIGHT_ALLOW_PRIVATE_NETWORKS` | Allow datasources in private networks such as `10.0.0.0/8` (default `true`). |
+| `SERVER_FORWARD_HEADERS_STRATEGY` | Set to `native` behind a reverse proxy, so login rate limiting sees the real client address. |
 | `SPRING_PROFILES_ACTIVE=prod` | Refuses to start while the admin still has the default password. |
 
 Execution limits (row caps, timeouts, worker pool, snapshot retention) are in `application.yml` under `app.insight`.
@@ -59,7 +63,7 @@ Execution limits (row caps, timeouts, worker pool, snapshot retention) are in `a
 
 | Concept | What it is |
 | --- | --- |
-| **DataSource** | An external PostgreSQL or SQL Server connection. Its password is sent once as `password` (stored encrypted) or given as `secretRef: env:VAR`. |
+| **DataSource** | An external PostgreSQL or SQL Server connection. Its password is sent once as `password` (stored encrypted) or given as `secretRef: env:DS_SECRET_NAME`. |
 | **QueryTemplate** | A guarded `SELECT` with named `:params`, bound to a data source. |
 | **Dataset** | A template plus default parameters, with an optional refresh schedule (cron such as `0 6 * * *` or `@hourly`). |
 | **Snapshot** | Up to 500 materialized rows of a run. The newest 50 per dataset are kept. Dashboards read snapshots, never live queries. |
@@ -83,8 +87,13 @@ flight share one run. A full worker queue returns `429`. Runs left unfinished by
   3. Every query runs in a read-only transaction that is always rolled back. PostgreSQL enforces it, so even a
      `SELECT` with side effects fails, and a `statement_timeout` applies. SQL Server has no read-only mode, so give
      its data sources a read-only login (`db_datareader`).
-- **Secrets**: passwords are encrypted (`enc:v1:`) or referenced from the environment. Responses only report
-  `secretType`.
+- **Secrets**: passwords are encrypted (`enc:v1:`) or referenced from the environment, limited to variables named
+  `DS_SECRET_*`. Responses only report `secretType`. Changing a data source's engine, host, port or database requires
+  its password again, so a stored password is never sent to a new server.
+- **Data source targets**: host and database name are validated, and driver settings never come from user input.
+  Before connecting, the host is resolved and refused if it is loopback, link-local (cloud metadata), multicast or,
+  when disabled, a private network. SQL Server connections are encrypted and verify the server certificate unless a
+  data source sets `options: {"trustServerCertificate": true}`.
 - **Errors** share one JSON shape:
   - `400` invalid input
   - `401` unauthenticated
@@ -134,7 +143,7 @@ Integration tests boot the full application, including the security filter chain
 
 ```bash
 createdb businessinsight_test        # or any PostgreSQL; see src/test/resources/application-test.yml
-TEST_DB_PASSWORD=app ./mvnw verify   # TEST_DB_PASSWORD also enables the live-execution tests
+DS_SECRET_TEST_DB=app ./mvnw verify  # DS_SECRET_TEST_DB also enables the live-execution tests
 ```
 
 CI runs the same suite with a PostgreSQL service container, and builds the frontend, on every push and pull request.

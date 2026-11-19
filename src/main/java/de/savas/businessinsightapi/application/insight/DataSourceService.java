@@ -17,11 +17,14 @@ public class DataSourceService {
     private final DataSourceRepository repo;
     private final JdbcConnectionProvider jdbcConnectionProvider;
     private final SecretCipher secretCipher;
+    private final DataSourceConnectionPolicy connectionPolicy;
 
-    public DataSourceService(DataSourceRepository repo, JdbcConnectionProvider jdbcConnectionProvider, SecretCipher secretCipher) {
+    public DataSourceService(DataSourceRepository repo, JdbcConnectionProvider jdbcConnectionProvider, SecretCipher secretCipher,
+                             DataSourceConnectionPolicy connectionPolicy) {
         this.repo = repo;
         this.jdbcConnectionProvider = jdbcConnectionProvider;
         this.secretCipher = secretCipher;
+        this.connectionPolicy = connectionPolicy;
     }
 
     public Page<DataSource> list(Long organizationId, Pageable pageable) {
@@ -47,6 +50,9 @@ public class DataSourceService {
                              String password,
                              com.fasterxml.jackson.databind.JsonNode options) {
         validateConnectionFields(host, port, databaseName, username);
+        if (type == null) {
+            throw new BadRequestException("type is required");
+        }
         String storedSecret = toStoredSecret(secretRef, password);
         if (storedSecret == null) {
             throw new BadRequestException("secretRef or password is required");
@@ -55,9 +61,9 @@ public class DataSourceService {
                 organizationId,
                 name,
                 type,
-                host.trim(),
+                connectionPolicy.validateHost(host),
                 port,
-                databaseName.trim(),
+                connectionPolicy.validateDatabaseName(databaseName),
                 username.trim(),
                 storedSecret,
                 options
@@ -78,11 +84,27 @@ public class DataSourceService {
                              Boolean active) {
         String storedSecret = toStoredSecret(secretRef, password);
         DataSource ds = get(organizationId, id);
+
+        DataSourceType newType = type != null ? type : ds.getType();
+        String newHost = host != null ? connectionPolicy.validateHost(host) : ds.getHost();
+        Integer newPort = port != null ? requirePort(port) : ds.getPort();
+        String newDatabaseName = databaseName != null ? connectionPolicy.validateDatabaseName(databaseName) : ds.getDatabaseName();
+
+        // The stored password belongs to the current server. Pointing the datasource somewhere else must not
+        // carry it along, or whoever may edit datasources could send it to a server of their choosing.
+        boolean targetChanged = newType != ds.getType()
+                || !newHost.equalsIgnoreCase(ds.getHost())
+                || !newPort.equals(ds.getPort())
+                || !newDatabaseName.equals(ds.getDatabaseName());
+        if (targetChanged && storedSecret == null) {
+            throw new BadRequestException("Changing type, host, port or databaseName requires the password or secretRef again");
+        }
+
         if (name != null) ds.setName(name);
-        if (type != null) ds.setType(type);
-        if (host != null) ds.setHost(requireText(host, "host"));
-        if (port != null) ds.setPort(requirePort(port));
-        if (databaseName != null) ds.setDatabaseName(requireText(databaseName, "databaseName"));
+        ds.setType(newType);
+        ds.setHost(newHost);
+        ds.setPort(newPort);
+        ds.setDatabaseName(newDatabaseName);
         if (username != null) ds.setUsername(requireText(username, "username"));
         if (storedSecret != null) ds.setSecretRef(storedSecret);
         if (options != null) ds.setOptions(options);
@@ -91,14 +113,14 @@ public class DataSourceService {
     }
 
     private void validateConnectionFields(String host, Integer port, String databaseName, String username) {
-        requireText(host, "host");
+        connectionPolicy.validateHost(host);
         requirePort(port);
-        requireText(databaseName, "databaseName");
+        connectionPolicy.validateDatabaseName(databaseName);
         requireText(username, "username");
     }
 
     /**
-     * Turns the request's secret into what is stored: {@code env:VAR} as-is, or a password encrypted with
+     * Turns the request's secret into what is stored: an allowed {@code env:DS_SECRET_...} reference, or a password encrypted with
      * {@link SecretCipher}. Returns null when neither is given (an update then keeps the current secret).
      */
     private String toStoredSecret(String secretRef, String password) {
@@ -109,7 +131,8 @@ public class DataSourceService {
         }
         if (hasPassword) {
             if (!secretCipher.isEnabled()) {
-                throw new BadRequestException("Encrypted passwords are disabled on this server (APP_SECRETS_KEY is not set); use secretRef=env:VAR_NAME");
+                throw new BadRequestException("Encrypted passwords are disabled on this server (APP_SECRETS_KEY is not set); use secretRef=env:"
+                        + connectionPolicy.envSecretPrefix() + "NAME");
             }
             if (password.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > MAX_PASSWORD_BYTES) {
                 throw new BadRequestException("password is too long");
@@ -117,11 +140,7 @@ public class DataSourceService {
             return secretCipher.encrypt(password);
         }
         if (hasRef) {
-            String ref = secretRef.trim();
-            if (!ref.startsWith("env:") || ref.length() == 4) {
-                throw new BadRequestException("secretRef must look like env:VAR_NAME; send a password to store it encrypted");
-            }
-            return ref;
+            return connectionPolicy.validateEnvSecretRef(secretRef);
         }
         return null;
     }

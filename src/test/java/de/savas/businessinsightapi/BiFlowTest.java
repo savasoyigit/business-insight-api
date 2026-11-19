@@ -15,7 +15,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
  * The whole BI pipeline over HTTP: DataSource -> QueryTemplate -> Dataset -> Snapshot -> Chart -> Dashboard.
- * The "external" database is the test database itself; its password is resolved through {@code env:TEST_DB_PASSWORD},
+ * The "external" database is the test database itself; its password is resolved through {@code env:DS_SECRET_TEST_DB},
  * so the test is skipped when that variable is not set.
  */
 class BiFlowTest extends IntegrationTestSupport {
@@ -41,7 +41,7 @@ class BiFlowTest extends IntegrationTestSupport {
     void jsonObjectFieldsRoundTrip() throws Exception {
         var ds = post(q("/api/insight/data-sources"), token, Map.of(
                 "name", "json", "type", "POSTGRES", "host", "h", "port", 5432, "databaseName", "d",
-                "username", "u", "secretRef", "env:X", "options", Map.of("ssl", true, "nested", Map.of("a", List.of(1, 2)))));
+                "username", "u", "secretRef", "env:DS_SECRET_X", "options", Map.of("ssl", true, "nested", Map.of("a", List.of(1, 2)))));
         assertThat(ds.status()).isEqualTo(200);
         assertThat(ds.body().get("options").get("nested").get("a").get(1).asInt()).isEqualTo(2);
     }
@@ -50,7 +50,7 @@ class BiFlowTest extends IntegrationTestSupport {
     void guardrailsRejectNonSelectSql() throws Exception {
         long dsId = post(q("/api/insight/data-sources"), token, Map.of(
                 "name", "guard", "type", "POSTGRES", "host", "h", "port", 5432, "databaseName", "d",
-                "username", "u", "secretRef", "env:X")).body().get("id").asLong();
+                "username", "u", "secretRef", "env:DS_SECRET_X")).body().get("id").asLong();
 
         for (String sql : List.of("delete from it_sales", "select 1; drop table it_sales", "select * from ${table}",
                 "select * into it_copy from it_sales", "select * from it_sales for update")) {
@@ -61,7 +61,7 @@ class BiFlowTest extends IntegrationTestSupport {
 
     @Test
     void fullPipelineRendersChartsAndDashboards() throws Exception {
-        assumeTrue(System.getenv("TEST_DB_PASSWORD") != null, "TEST_DB_PASSWORD not set; skipping live execution test");
+        assumeTrue(System.getenv("DS_SECRET_TEST_DB") != null, "DS_SECRET_TEST_DB not set; skipping live execution test");
 
         jdbc.execute("create table if not exists it_sales(order_date date, region text, amount numeric)");
         jdbc.execute("truncate it_sales");
@@ -122,7 +122,7 @@ class BiFlowTest extends IntegrationTestSupport {
     /** A SELECT that writes (nextval) passes the SQL checks; the read-only transaction must still stop it. */
     @Test
     void databaseRefusesWritesThatPassTheSqlChecks() throws Exception {
-        assumeTrue(System.getenv("TEST_DB_PASSWORD") != null, "TEST_DB_PASSWORD not set; skipping live execution test");
+        assumeTrue(System.getenv("DS_SECRET_TEST_DB") != null, "DS_SECRET_TEST_DB not set; skipping live execution test");
         jdbc.execute("create sequence if not exists it_seq");
         long before = jdbc.queryForObject("select last_value from it_seq", Long.class);
 
@@ -139,7 +139,7 @@ class BiFlowTest extends IntegrationTestSupport {
 
     @Test
     void passwordsAreStoredEncryptedAndNeverReturned() throws Exception {
-        String password = env("TEST_DB_PASSWORD", "app");
+        String password = env("DS_SECRET_TEST_DB", "app");
         Map<String, Object> body = new java.util.HashMap<>(liveDataSource("encrypted"));
         body.remove("secretRef");
         body.put("password", password);
@@ -156,13 +156,13 @@ class BiFlowTest extends IntegrationTestSupport {
         String listed = get(q("/api/insight/data-sources?size=100"), token).text();
         assertThat(listed).doesNotContain(stored).doesNotContain("enc:v1:");
 
-        if (System.getenv("TEST_DB_PASSWORD") != null) {
+        if (System.getenv("DS_SECRET_TEST_DB") != null) {
             var test = post(q("/api/insight/data-sources/" + id + "/test"), token, null);
             assertThat(test.body().get("ok").asBoolean()).as("connects with the decrypted password: " + test.text()).isTrue();
         }
 
         // switching back to an environment reference
-        var updated = put(q("/api/insight/data-sources/" + id), token, Map.of("secretRef", "env:TEST_DB_PASSWORD"));
+        var updated = put(q("/api/insight/data-sources/" + id), token, Map.of("secretRef", "env:DS_SECRET_TEST_DB"));
         assertThat(updated.body().get("secretType").asString()).isEqualTo("ENV");
     }
 
@@ -186,7 +186,7 @@ class BiFlowTest extends IntegrationTestSupport {
                 "name", name, "type", "POSTGRES",
                 "host", env("TEST_DB_HOST", "localhost"), "port", Integer.parseInt(env("TEST_DB_PORT", "5432")),
                 "databaseName", env("TEST_DB_NAME", "businessinsight_test"), "username", env("TEST_DB_USER", "app"),
-                "secretRef", "env:TEST_DB_PASSWORD");
+                "secretRef", "env:DS_SECRET_TEST_DB");
     }
 
     private static String env(String key, String fallback) {

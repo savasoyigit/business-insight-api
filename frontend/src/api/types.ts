@@ -26,7 +26,7 @@ export interface DataSource {
   port: number;
   databaseName: string;
   username: string;
-  /** env:VAR_NAME, or null when the password is stored encrypted. */
+  /** env:DS_SECRET_NAME, or null when the password is stored encrypted. */
   secretRef: string | null;
   secretType: 'ENV' | 'ENCRYPTED';
   options: Json | null;
@@ -35,7 +35,7 @@ export interface DataSource {
 
 export type DataSourceInput = Omit<DataSource, 'id' | 'active' | 'secretRef' | 'secretType'> & {
   active?: boolean;
-  /** env:VAR_NAME */
+  /** env:DS_SECRET_NAME */
   secretRef?: string;
   /** Write-only; the server stores it encrypted and never returns it. */
   password?: string;

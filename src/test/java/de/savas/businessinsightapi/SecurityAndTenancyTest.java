@@ -16,7 +16,7 @@ class SecurityAndTenancyTest extends IntegrationTestSupport {
 
     private Map<String, Object> dataSource(String name) {
         return Map.of("name", name, "type", "POSTGRES", "host", "localhost", "port", 5432,
-                "databaseName", "db", "username", "reader", "secretRef", "env:NOT_USED");
+                "databaseName", "db", "username", "reader", "secretRef", "env:DS_SECRET_NOT_USED");
     }
 
     @Test

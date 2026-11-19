@@ -63,4 +63,12 @@ public class PostgresDialect implements SqlDialect {
     public String buildJdbcUrl(String host, int port, String databaseName) {
         return "jdbc:postgresql://%s:%d/%s".formatted(host, port, databaseName);
     }
+
+    @Override
+    public java.util.Properties connectionProperties(com.fasterxml.jackson.databind.JsonNode options) {
+        java.util.Properties props = new java.util.Properties();
+        props.setProperty("connectTimeout", "10");
+        props.setProperty("ApplicationName", "business-insight-api");
+        return props;
+    }
 }

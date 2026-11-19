@@ -179,7 +179,7 @@ function seedState(): DemoState {
 
   s.dataSources.push(
     { org, id: 1, name: 'Reporting Postgres', type: 'POSTGRES', host: 'reporting.db.internal', port: 5432, databaseName: 'erp_reporting', username: 'readonly_user', secretRef: null, secretType: 'ENCRYPTED', options: { ssl: true }, active: true },
-    { org, id: 2, name: 'Legacy ERP', type: 'MSSQL', host: 'erp-legacy.corp', port: 1433, databaseName: 'ERP_PROD', username: 'bi_reader', secretRef: 'env:ERP_LEGACY_PASSWORD', secretType: 'ENV', options: { encrypt: true }, active: true },
+    { org, id: 2, name: 'Legacy ERP', type: 'MSSQL', host: 'erp-legacy.corp', port: 1433, databaseName: 'ERP_PROD', username: 'bi_reader', secretRef: 'env:DS_SECRET_ERP_LEGACY', secretType: 'ENV', options: { trustServerCertificate: false }, active: true },
   );
 
   s.templates.push(
@@ -410,17 +410,23 @@ export class DemoApi implements Api {
     await this.guardOrg(org, 'INSIGHT_DS_UPDATE');
     const ds = this.find(this.s.dataSources, org, id, 'DataSource');
     const { password, secretRef, ...rest } = body;
-    Object.assign(ds, Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined)), this.secret(secretRef, password, false) ?? {});
+    const secret = this.secret(secretRef, password, false);
+    const targetChanged = (rest.type !== undefined && rest.type !== ds.type)
+      || (rest.host !== undefined && rest.host.trim().toLowerCase() !== ds.host.toLowerCase())
+      || (rest.port !== undefined && rest.port !== ds.port)
+      || (rest.databaseName !== undefined && rest.databaseName.trim() !== ds.databaseName);
+    if (targetChanged && !secret) throw new ApiError(400, 'Changing type, host, port or databaseName requires the password or secretRef again');
+    Object.assign(ds, Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined)), secret ?? {});
     this.save();
     return this.strip(ds);
   }
 
-  /** Mirrors DataSourceService: either env:VAR or a password (kept only as "encrypted"). */
+  /** Mirrors DataSourceService: either env:DS_SECRET_* or a password (kept only as "encrypted"). */
   private secret(secretRef: string | undefined, password: string | undefined, required: boolean): Pick<DataSource, 'secretRef' | 'secretType'> | null {
     if (secretRef && password) throw new ApiError(400, 'Provide either secretRef or password, not both');
     if (password) return { secretRef: null, secretType: 'ENCRYPTED' };
     if (secretRef) {
-      if (!/^env:.+/.test(secretRef.trim())) throw new ApiError(400, 'secretRef must look like env:VAR_NAME; send a password to store it encrypted');
+      if (!/^env:DS_SECRET_[A-Za-z0-9_]+$/.test(secretRef.trim())) throw new ApiError(400, 'secretRef must look like env:DS_SECRET_NAME (only variables starting with DS_SECRET_ can be used); send a password to store it encrypted');
       return { secretRef: secretRef.trim(), secretType: 'ENV' };
     }
     if (required) throw new ApiError(400, 'secretRef or password is required');
