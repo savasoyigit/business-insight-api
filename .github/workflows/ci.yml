@@ -34,8 +34,9 @@ jobs:
     env:
       TEST_DB_URL: jdbc:postgresql://localhost:5432/businessinsight_test
       TEST_DB_USER: app
-      # Also used as env:TEST_DB_PASSWORD by the live pipeline test.
       TEST_DB_PASSWORD: app
+      # Read by the live pipeline tests as secretRef env:DS_SECRET_TEST_DB.
+      DS_SECRET_TEST_DB: app
     steps:
       - uses: actions/checkout@v4
 

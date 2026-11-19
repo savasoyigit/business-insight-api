@@ -95,9 +95,9 @@ function DataSourceForm({ initial, onClose, onSaved }: { initial: DataSource | n
   const { api, orgId } = useSession();
   const toast = useToast();
   const [f, setF] = useState<DataSourceInput & { active: boolean; secretRef: string; password: string }>({
-    name: initial?.name ?? '', type: initial?.type ?? 'POSTGRES', host: initial?.host ?? 'localhost',
+    name: initial?.name ?? '', type: initial?.type ?? 'POSTGRES', host: initial?.host ?? '',
     port: initial?.port ?? 5432, databaseName: initial?.databaseName ?? '', username: initial?.username ?? '',
-    secretRef: initial?.secretRef ?? 'env:', password: '', options: initial?.options ?? null, active: initial?.active ?? true,
+    secretRef: initial?.secretRef ?? 'env:DS_SECRET_', password: '', options: initial?.options ?? null, active: initial?.active ?? true,
   });
   const [secretMode, setSecretMode] = useState<'password' | 'env'>(initial?.secretType === 'ENV' ? 'env' : 'password');
   const keepsEncrypted = initial?.secretType === 'ENCRYPTED';
@@ -136,7 +136,7 @@ function DataSourceForm({ initial, onClose, onSaved }: { initial: DataSource | n
             <option value="MSSQL">SQL Server</option>
           </select>
         </Field>
-        <Field label="Host"><input value={f.host} onChange={(e) => set('host', e.target.value)} /></Field>
+        <Field label="Host"><input value={f.host} onChange={(e) => set('host', e.target.value)} placeholder="db.example.com" /></Field>
         <Field label="Port"><input type="number" value={f.port} onChange={(e) => set('port', Number(e.target.value))} /></Field>
         <Field label="Database"><input value={f.databaseName} onChange={(e) => set('databaseName', e.target.value)} /></Field>
         <Field label="Username"><input value={f.username} onChange={(e) => set('username', e.target.value)} /></Field>
@@ -149,11 +149,11 @@ function DataSourceForm({ initial, onClose, onSaved }: { initial: DataSource | n
             </div>
           </div>
           {secretMode === 'password' ? (
-            <Field label="Database password" hint={keepsEncrypted ? 'Leave empty to keep the current password.' : 'Encrypted with AES-256-GCM on the server; never shown again.'}>
+            <Field label="Database password" hint={keepsEncrypted ? 'Leave empty to keep the current password. Required again when engine, host, port or database changes.' : 'Encrypted with AES-256-GCM on the server; never shown again.'}>
               <input type="password" autoComplete="new-password" value={f.password} placeholder={keepsEncrypted ? '•••••••• (unchanged)' : ''} onChange={(e) => set('password', e.target.value)} />
             </Field>
           ) : (
-            <Field label="Secret reference" hint={<>Read from the API server's environment, e.g. <span className="mono">env:ERP_REPORTING_PASSWORD</span></>}>
+            <Field label="Secret reference" hint={<>Read from the API server's environment; only variables starting with <span className="mono">DS_SECRET_</span> are allowed, e.g. <span className="mono">env:DS_SECRET_ERP_REPORTING</span></>}>
               <input className="mono" value={f.secretRef} onChange={(e) => set('secretRef', e.target.value)} />
             </Field>
           )}

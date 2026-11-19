@@ -15,6 +15,9 @@ app:
       snapshot-rows: 500
       query-timeout-seconds: 30
       snapshot-retention: 3
+    connection:
+      # The live pipeline tests use the test database on localhost as their "external" database.
+      allow-loopback: true
     scheduler:
       # Tests drive DatasetRefreshScheduler#refreshDueDatasets directly.
       enabled: false

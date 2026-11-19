@@ -16,18 +16,26 @@ public class BasicJdbcConnectionProvider implements JdbcConnectionProvider {
     private final DataSourceSecretResolver secretResolver;
     private final InsightExecutionProperties properties;
     private final SqlDialectFactory dialectFactory;
+    private final DataSourceConnectionPolicy connectionPolicy;
 
     public BasicJdbcConnectionProvider(DataSourceSecretResolver secretResolver,
                                       InsightExecutionProperties properties,
-                                      SqlDialectFactory dialectFactory) {
+                                      SqlDialectFactory dialectFactory,
+                                      DataSourceConnectionPolicy connectionPolicy) {
         this.secretResolver = secretResolver;
         this.properties = properties;
         this.dialectFactory = dialectFactory;
+        this.connectionPolicy = connectionPolicy;
     }
 
     @Override
     public <T> T readOnly(DataSource dataSource, ReadOnlyWork<T> work) {
         SqlDialect dialect = dialectFactory.getDialect(dataSource.getType());
+        // Before the secret is resolved, so it is never sent to a disallowed address. Rows saved before validation
+        // existed are re-checked here too. (The driver resolves the name again; a DNS answer that changes in between
+        // is not covered.)
+        connectionPolicy.assertAllowedTarget(dataSource.getHost());
+        connectionPolicy.validateDatabaseName(dataSource.getDatabaseName());
 
         DriverManagerDataSource jdbcDataSource = new DriverManagerDataSource();
         jdbcDataSource.setDriverClassName(dialect.getDriverClassName());
@@ -36,6 +44,7 @@ public class BasicJdbcConnectionProvider implements JdbcConnectionProvider {
                 dataSource.getPort(),
                 dataSource.getDatabaseName()
         ));
+        jdbcDataSource.setConnectionProperties(dialect.connectionProperties(dataSource.getOptions()));
         jdbcDataSource.setUsername(dataSource.getUsername());
         jdbcDataSource.setPassword(secretResolver.resolve(dataSource));
 

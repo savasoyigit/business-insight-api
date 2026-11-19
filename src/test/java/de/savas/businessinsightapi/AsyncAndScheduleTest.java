@@ -38,14 +38,14 @@ class AsyncAndScheduleTest extends IntegrationTestSupport {
     }
 
     private void requireLiveDb() {
-        assumeTrue(System.getenv("TEST_DB_PASSWORD") != null, "TEST_DB_PASSWORD not set; skipping live execution test");
+        assumeTrue(System.getenv("DS_SECRET_TEST_DB") != null, "DS_SECRET_TEST_DB not set; skipping live execution test");
     }
 
     private long dataSource(String host, int port) throws Exception {
         var r = post(q("/api/insight/data-sources"), token, Map.of(
                 "name", unique("ds"), "type", "POSTGRES", "host", host, "port", port,
                 "databaseName", env("TEST_DB_NAME", "businessinsight_test"), "username", env("TEST_DB_USER", "app"),
-                "secretRef", "env:TEST_DB_PASSWORD"));
+                "secretRef", "env:DS_SECRET_TEST_DB"));
         assertThat(r.status()).as(r.text()).isEqualTo(200);
         return r.body().get("id").asLong();
     }

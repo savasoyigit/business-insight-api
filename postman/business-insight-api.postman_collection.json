@@ -223,7 +223,7 @@
                 },
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"name\": \"ERP SQL Server\",\n  \"type\": \"MSSQL\",\n  \"host\": \"localhost\",\n  \"port\": 1433,\n  \"databaseName\": \"erp_prod\",\n  \"username\": \"readonly_user\",\n  \"secretRef\": \"env:MSSQL_PASSWORD\",\n  \"options\": {}\n}"
+                  "raw": "{\n  \"name\": \"ERP SQL Server\",\n  \"type\": \"MSSQL\",\n  \"host\": \"localhost\",\n  \"port\": 1433,\n  \"databaseName\": \"erp_prod\",\n  \"username\": \"readonly_user\",\n  \"secretRef\": \"env:DS_SECRET_ERP_MSSQL\",\n  \"options\": {}\n}"
                 }
               },
               "event": [
@@ -1077,7 +1077,7 @@
     },
     {
       "key": "dataSourceSecretRef",
-      "value": "env:ERP_REPORTING_PASSWORD"
+      "value": "env:DS_SECRET_ERP_REPORTING"
     },
     {
       "key": "dataSourceId",

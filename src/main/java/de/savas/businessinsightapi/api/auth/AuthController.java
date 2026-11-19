@@ -26,11 +26,12 @@ public class AuthController {
         return new LoginResponse(token);
     }
 
+    /**
+     * The connection's address. X-Forwarded-For is not read here: any client can set it, and a new value per
+     * request would get around the login rate limit. Behind a reverse proxy, server.forward-headers-strategy=native
+     * makes the container fill in the client address, accepting the header only from trusted proxies.
+     */
     private String clientIp(HttpServletRequest request) {
-        String forwarded = request.getHeader("X-Forwarded-For");
-        if (forwarded != null && !forwarded.isBlank()) {
-            return forwarded.split(",")[0].trim();
-        }
         return request.getRemoteAddr();
     }
 }

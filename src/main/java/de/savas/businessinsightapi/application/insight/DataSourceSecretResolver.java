@@ -7,15 +7,18 @@ import org.springframework.stereotype.Component;
 
 /**
  * Resolves a datasource password from its secretRef:
- * {@code env:VAR} reads an environment variable, {@code enc:v1:...} is decrypted with {@link SecretCipher}.
+ * {@code env:DS_SECRET_...} reads an environment variable with the allowed prefix
+ * (see {@link DataSourceConnectionProperties#envSecretPrefix()}), {@code enc:v1:...} is decrypted with {@link SecretCipher}.
  */
 @Component
 public class DataSourceSecretResolver {
 
     private final SecretCipher cipher;
+    private final DataSourceConnectionPolicy policy;
 
-    public DataSourceSecretResolver(SecretCipher cipher) {
+    public DataSourceSecretResolver(SecretCipher cipher, DataSourceConnectionPolicy policy) {
         this.cipher = cipher;
+        this.policy = policy;
     }
 
     public String resolve(DataSource dataSource) {
@@ -30,14 +33,13 @@ public class DataSourceSecretResolver {
                 throw new BadRequestException(ex.getMessage());
             }
         }
-        if (!secretRef.startsWith("env:")) {
-            throw new BadRequestException("Unsupported secretRef; use env:VAR_NAME or send a password");
-        }
 
-        String envKey = secretRef.substring(4);
+        // Checked again here, not only when saved: rows written before the prefix rule must not reach other variables.
+        String envKey = policy.validateEnvSecretRef(secretRef).substring(4);
         String secret = System.getenv(envKey);
         if (secret == null || secret.isBlank()) {
-            throw new BadRequestException("Missing datasource secret in environment: " + envKey);
+            // Deliberately does not name the variable or say whether it exists.
+            throw new BadRequestException("Datasource secret is not available on this server");
         }
         return secret;
     }

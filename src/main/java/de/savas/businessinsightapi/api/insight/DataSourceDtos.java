@@ -15,7 +15,7 @@ public class DataSourceDtos {
             @NotNull Integer port,
             @NotBlank String databaseName,
             @NotBlank String username,
-            /** {@code env:VAR_NAME}; alternatively send {@code password} to store it encrypted. */
+            /** {@code env:DS_SECRET_NAME}; alternatively send {@code password} to store it encrypted. */
             String secretRef,
             /** Write-only: encrypted at rest, never returned. */
             String password,
@@ -43,7 +43,7 @@ public class DataSourceDtos {
             Integer port,
             String databaseName,
             String username,
-            /** {@code env:VAR_NAME}, or null when the password is stored encrypted. */
+            /** {@code env:DS_SECRET_NAME}, or null when the password is stored encrypted. */
             String secretRef,
             /** ENV or ENCRYPTED. */
             String secretType,
