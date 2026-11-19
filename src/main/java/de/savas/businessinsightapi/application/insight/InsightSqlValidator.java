@@ -17,10 +17,12 @@ public class InsightSqlValidator {
     
     private final SqlDialectFactory dialectFactory;
     private final SqlStatementGuard statementGuard;
+    private final SqlFunctionGuard functionGuard;
 
-    public InsightSqlValidator(SqlDialectFactory dialectFactory, SqlStatementGuard statementGuard) {
+    public InsightSqlValidator(SqlDialectFactory dialectFactory, SqlStatementGuard statementGuard, SqlFunctionGuard functionGuard) {
         this.dialectFactory = dialectFactory;
         this.statementGuard = statementGuard;
+        this.functionGuard = functionGuard;
     }
 
     public ValidationResult validateSql(String sqlText, DataSourceType dataSourceType) {
@@ -43,6 +45,10 @@ public class InsightSqlValidator {
             // Only parse what already passed the cheap checks, so error messages stay specific.
             if (errors.isEmpty()) {
                 statementGuard.check(sqlText, dataSourceType).ifPresent(errors::add);
+            }
+            // Also runs on execution, so templates saved before a function was refused cannot run it either.
+            if (errors.isEmpty()) {
+                functionGuard.check(sqlText, dataSourceType).ifPresent(errors::add);
             }
         }
 

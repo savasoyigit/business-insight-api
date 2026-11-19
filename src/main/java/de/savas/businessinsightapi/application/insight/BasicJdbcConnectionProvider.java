@@ -1,6 +1,8 @@
 package de.savas.businessinsightapi.application.insight;
 
 import de.savas.businessinsightapi.domain.insight.datasource.DataSource;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.jdbc.datasource.SingleConnectionDataSource;
@@ -12,6 +14,8 @@ import java.sql.Statement;
 
 @Component
 public class BasicJdbcConnectionProvider implements JdbcConnectionProvider {
+
+    private static final Logger log = LoggerFactory.getLogger(BasicJdbcConnectionProvider.class);
 
     private final DataSourceSecretResolver secretResolver;
     private final InsightExecutionProperties properties;
@@ -48,7 +52,7 @@ public class BasicJdbcConnectionProvider implements JdbcConnectionProvider {
         jdbcDataSource.setUsername(dataSource.getUsername());
         jdbcDataSource.setPassword(secretResolver.resolve(dataSource));
 
-        try (Connection connection = jdbcDataSource.getConnection()) {
+        try (Connection connection = open(jdbcDataSource, dataSource)) {
             connection.setAutoCommit(false);
             connection.setReadOnly(true);
             try {
@@ -67,6 +71,17 @@ public class BasicJdbcConnectionProvider implements JdbcConnectionProvider {
             }
         } catch (SQLException ex) {
             throw new IllegalStateException(ex.getMessage(), ex);
+        }
+    }
+
+    /** Opens the connection; driver details go to the log, users only see {@link DataSourceConnectionException}'s category. */
+    private Connection open(DriverManagerDataSource jdbcDataSource, DataSource dataSource) {
+        try {
+            return jdbcDataSource.getConnection();
+        } catch (SQLException ex) {
+            log.warn("Connection to datasource {} (org {}) failed: sqlState={} message={}",
+                    dataSource.getId(), dataSource.getOrganizationId(), ex.getSQLState(), ex.getMessage());
+            throw DataSourceConnectionException.from(ex);
         }
     }
 }
